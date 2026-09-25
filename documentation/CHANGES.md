@@ -19,7 +19,3 @@
 
 - **(gaffa)** publish release binaries per tag — cargo-binstall finds them without compiling - ([be4d534](https://github.com/oryon-dominik/interstellar-gaffa/commit/be4d534cc3f1b2431423cefb9e51d087c0ac9b91))
 - **(gaffa)** mint CalVer releases with a changelog — the archives carry the licences of everything they link - ([024d1ff](https://github.com/oryon-dominik/interstellar-gaffa/commit/024d1ff72e2a1534e3293ec90c87a40827c27aa2))
-
-
-
-Versions before CalVer, 0.1.0 to 0.5.1, are listed on [crates.io](https://crates.io/crates/gaffa/versions).
