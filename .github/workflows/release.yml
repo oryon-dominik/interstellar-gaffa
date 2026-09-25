@@ -1,0 +1,117 @@
+# Build the release binaries of one version and publish them under its tag. The asset
+# names follow a pattern cargo-binstall tries by default, so `cargo binstall gaffa`
+# finds them without compiling and without binstall metadata in Cargo.toml.
+#
+# A pushed tag v<version> builds itself; a tag cut before this workflow existed is
+# built by hand: gh workflow run release.yml --field tag=v0.5.1
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to build, e.g. v0.5.1
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install rustup where the runner image lacks it
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs |
+              sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+          fi
+
+      - name: Check the tag names the version in Cargo.toml
+        run: |
+          pkgid=$(cargo pkgid)
+          version=${pkgid##*[#@]}
+          if [ "v$version" != "$TAG" ]; then
+            echo "error: tag $TAG does not match version $version in Cargo.toml" >&2
+            exit 1
+          fi
+
+      - name: Install the musl toolchain
+        if: endsWith(matrix.target, '-musl')
+        run: |
+          sudo apt-get update --quiet
+          sudo apt-get install --yes --no-install-recommends musl-tools
+
+      - name: Build
+        run: |
+          rustup target add "${{ matrix.target }}"
+          cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Pack the binary with its licence
+        run: |
+          package="gaffa-${{ matrix.target }}-$TAG"
+          mkdir "$package"
+          cp LICENSE README.md "$package/"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/gaffa.exe" "$package/"
+            archive="$package.zip"
+            7z a -tzip "$archive" "./$package/*" >/dev/null
+          else
+            cp "target/${{ matrix.target }}/release/gaffa" "$package/"
+            archive="$package.tgz"
+            tar --create --gzip --file "$archive" --directory "$package" .
+          fi
+          sha256sum "$archive" >"$archive.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gaffa-${{ matrix.target }}
+          path: gaffa-${{ matrix.target }}-*
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: gaffa-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish the release
+        # No --clobber: a published asset is never replaced.
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "gaffa ${TAG#v}" \
+              --notes "Prebuilt binaries of gaffa ${TAG#v}. Install with \`cargo binstall gaffa\`; each archive has its \`.sha256\` beside it."
+          fi

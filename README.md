@@ -31,6 +31,14 @@ Available on crates.io: [gaffa](https://crates.io/crates/gaffa)
 cargo install gaffa
 ```
 
+Prebuilt binaries for Linux (x86_64, aarch64) and Windows ship with every release —
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) fetches them without
+compiling:
+
+```bash
+cargo binstall gaffa
+```
+
 Or build from source:
 
 ```bash
