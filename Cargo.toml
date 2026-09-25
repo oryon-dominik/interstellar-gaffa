@@ -82,9 +82,8 @@ footer = """
 """
 
 [package.metadata.git-cliff.git]
-# A release tag is a CalVer number; v0.5.1 is the last one before CalVer and the
-# first changelog starts after it.
-tag_pattern = '^([0-9]{4}\.[0-9]{1,2}\.[0-9]+|v0\.5\.1)$'
+# A release tag is a CalVer number.
+tag_pattern = '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$'
 conventional_commits = true
 filter_unconventional = true
 require_conventional = false
