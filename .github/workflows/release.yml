@@ -88,7 +88,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: gaffa-${{ matrix.target }}
-          path: gaffa-${{ matrix.target }}-*
+          path: |
+            gaffa-${{ matrix.target }}-*.tgz
+            gaffa-${{ matrix.target }}-*.zip
+            gaffa-${{ matrix.target }}-*.sha256
           retention-days: 1
 
   release:
