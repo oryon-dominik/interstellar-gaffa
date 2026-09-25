@@ -1,11 +1,11 @@
 [package]
 name = "gaffa"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 authors = ["<oryon@cyberise.de>"]
 description = "Cross-platform process manager for Procfile-based process-collections."
 license-file = "LICENSE"
-repository = "https://github.com/oryon-dominik/gaffa"
+repository = "https://github.com/oryon-dominik/interstellar-gaffa"
 readme = "README.md"
 keywords = ["procfile", "process-manager", "foreman", "overmind", "honcho"]
 categories = [
@@ -47,4 +47,4 @@ uuid = { version = "1", features = ["v4"] }
 all-features = true
 
 [badges]
-github-actions = { repository = "oryon-dominik/gaffa", branch = "trunk" }
+github-actions = { repository = "oryon-dominik/interstellar-gaffa", branch = "trunk" }

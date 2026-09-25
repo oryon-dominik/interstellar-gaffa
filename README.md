@@ -34,8 +34,8 @@ cargo install gaffa
 Or build from source:
 
 ```bash
-git clone https://github.com/oryon-dominik/gaffa.git
-cd gaffa
+git clone https://github.com/oryon-dominik/interstellar-gaffa.git
+cd interstellar-gaffa
 cargo build --release
 ```
 
