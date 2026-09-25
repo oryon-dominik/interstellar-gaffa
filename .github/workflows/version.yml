@@ -1,0 +1,73 @@
+# Cut a release: mint the next CalVer version, write it into Cargo.toml and
+# Cargo.lock, prepend its changelog to documentation/CHANGES.md, commit and tag
+# it, then build the release binaries in the same run — a tag pushed with the
+# workflow token starts no other workflow.
+#
+# Publishing to crates.io stays by hand: cargo publish from the tagged commit.
+name: Version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Mint the version — the running month plus the releases it already carries
+        id: version
+        run: |
+          # The month is read in fleet time: UTC would date the first hours of a
+          # month to the one before.
+          month=$(TZ=Europe/Berlin date +%Y.%-m)
+          serial=$(git tag --list "$month.*" | wc --lines)
+          version="$month.$serial"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "Version $version"
+
+      - name: Write the version into Cargo.toml and Cargo.lock
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sed --in-place "/^\[package\]/,/^\[/ s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          if git diff --quiet Cargo.toml; then
+            echo "error: Cargo.toml kept its version" >&2
+            exit 1
+          fi
+          cargo update --workspace
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Prepend the changelog
+        run: git-cliff --config Cargo.toml --unreleased --tag "${{ steps.version.outputs.version }}" --prepend documentation/CHANGES.md
+
+      - name: Commit and tag the release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "@ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock documentation/CHANGES.md
+          git commit --message "chore(release): tag version=$VERSION [skip ci]"
+          git tag --annotate "$VERSION" --message "Release $VERSION"
+          git push --follow-tags
+
+  release:
+    needs: version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.version.outputs.version }}

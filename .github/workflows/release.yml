@@ -2,27 +2,53 @@
 # names follow a pattern cargo-binstall tries by default, so `cargo binstall gaffa`
 # finds them without compiling and without binstall metadata in Cargo.toml.
 #
-# A pushed tag v<version> builds itself; a tag cut before this workflow existed is
-# built by hand: gh workflow run release.yml --field tag=v0.5.1
+# The version workflow calls it after tagging; a tag it did not cut is built by hand:
+# gh workflow run release.yml --field tag=v0.5.1
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       tag:
-        description: The tag to build, e.g. v0.5.1
+        description: The tag to build, e.g. 2026.9.0
         required: true
 
 permissions:
   contents: read
 
 env:
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: ${{ inputs.tag }}
 
 jobs:
+  notices:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+
+      - name: Collect the licences of everything the binaries link
+        run: |
+          cargo about generate --config licensing/about.toml --locked \
+            --output-file THIRD-PARTY-LICENSES.html licensing/third-party-licenses.hbs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: third-party-licenses
+          path: THIRD-PARTY-LICENSES.html
+          retention-days: 1
+
   build:
+    needs: notices
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -53,7 +79,7 @@ jobs:
         run: |
           pkgid=$(cargo pkgid)
           version=${pkgid##*[#@]}
-          if [ "v$version" != "$TAG" ]; then
+          if [ "$version" != "${TAG#v}" ]; then
             echo "error: tag $TAG does not match version $version in Cargo.toml" >&2
             exit 1
           fi
@@ -69,11 +95,15 @@ jobs:
           rustup target add "${{ matrix.target }}"
           cargo build --release --locked --target "${{ matrix.target }}"
 
-      - name: Pack the binary with its licence
+      - uses: actions/download-artifact@v8
+        with:
+          name: third-party-licenses
+
+      - name: Pack the binary with its licences
         run: |
           package="gaffa-${{ matrix.target }}-$TAG"
           mkdir "$package"
-          cp LICENSE README.md "$package/"
+          cp LICENSE THIRD-PARTY-LICENSES.html README.md "$package/"
           if [[ "${{ matrix.target }}" == *windows* ]]; then
             cp "target/${{ matrix.target }}/release/gaffa.exe" "$package/"
             archive="$package.zip"
@@ -116,5 +146,5 @@ jobs:
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
               --title "gaffa ${TAG#v}" \
-              --notes "Prebuilt binaries of gaffa ${TAG#v}. Install with \`cargo binstall gaffa\`; each archive has its \`.sha256\` beside it."
+              --notes "Prebuilt binaries of gaffa ${TAG#v}. Install with \`cargo binstall gaffa\`; each archive has its \`.sha256\` beside it and carries the licences of everything the binary links."
           fi
