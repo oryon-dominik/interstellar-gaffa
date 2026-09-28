@@ -132,10 +132,7 @@ fn wrap_ansi_preserving(input: &str, content_w: usize) -> Vec<String> {
                             i += 1;
                             break;
                         }
-                        if bytes[i] == 0x1b
-                            && i + 1 < bytes.len()
-                            && bytes[i + 1] == b'\\'
-                        {
+                        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
                             i += 2;
                             break;
                         }

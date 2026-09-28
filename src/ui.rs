@@ -299,10 +299,7 @@ pub async fn run_terminal_ui(
                 let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
                 let clean = crate::output::strip_ansi_escapes(&entry.content);
                 let log_line = if entry.is_error {
-                    format!(
-                        "[{timestamp}] [STDERR] [{}] {clean}\n",
-                        entry.process
-                    )
+                    format!("[{timestamp}] [STDERR] [{}] {clean}\n", entry.process)
                 } else {
                     format!("[{timestamp}] [{}] {clean}\n", entry.process)
                 };

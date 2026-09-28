@@ -127,10 +127,7 @@ fn rotate_log_path(path: &str) -> std::path::PathBuf {
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let stem = orig
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("gaffa");
+    let stem = orig.file_stem().and_then(|s| s.to_str()).unwrap_or("gaffa");
     let ext = orig.extension().and_then(|s| s.to_str());
 
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -198,10 +195,7 @@ fn print_startup_banner(
         // Compact fallback: plain prefixed lines, always copy-safe.
         println!(
             "{}",
-            output::format_gaffa_message(
-                &format!("{title} · {procs_value}"),
-                5
-            )
+            output::format_gaffa_message(&format!("{title} · {procs_value}"), 5)
         );
         if let Some(p) = log_path_requested {
             println!(
@@ -209,10 +203,7 @@ fn print_startup_banner(
                 output::format_gaffa_message(&format!("logging to {p}"), 5)
             );
         }
-        println!(
-            "{}",
-            output::format_gaffa_message("q or Ctrl+C to stop", 5)
-        );
+        println!("{}", output::format_gaffa_message("q or Ctrl+C to stop", 5));
         announce_log_rotation(log_path_requested, log_path_rotated);
         return;
     }
@@ -243,10 +234,7 @@ fn print_startup_banner(
 /// the actual on-disk file differs from the path the user passed with
 /// `--log-file`. Keeps the banner header clean while making the rotation
 /// observable — grep-friendly and copy-safe.
-fn announce_log_rotation(
-    requested: Option<&str>,
-    rotated: Option<&std::path::Path>,
-) {
+fn announce_log_rotation(requested: Option<&str>, rotated: Option<&std::path::Path>) {
     let (Some(req), Some(rot)) = (requested, rotated) else {
         return;
     };
@@ -454,9 +442,7 @@ async fn show_termination_summary(manager: &ProcessManager, _was_interrupted: bo
                 (gaffa::ProcessStatus::Stopped, Some(0)) => "exit 0".to_string(),
                 (gaffa::ProcessStatus::Stopped, Some(-1)) => "terminated".to_string(),
                 (gaffa::ProcessStatus::Stopped, Some(512)) => "interrupted".to_string(),
-                (gaffa::ProcessStatus::Stopped, Some(-1073741510)) => {
-                    "interrupted".to_string()
-                }
+                (gaffa::ProcessStatus::Stopped, Some(-1073741510)) => "interrupted".to_string(),
                 (gaffa::ProcessStatus::Stopped, Some(code)) => format!("exit {code}"),
                 (gaffa::ProcessStatus::Stopped, None) => "stopped".to_string(),
                 _ => "unknown".to_string(),
