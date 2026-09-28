@@ -7,22 +7,31 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 
 /// Reset terminal to normal state.
+///
+/// The escape sequences go out only to a terminal — redirected into a file
+/// they are noise at the end of every log.
 fn reset_terminal() {
-    use std::io::Write;
+    use std::io::{IsTerminal, Write};
+
+    let terminal = std::io::stdout().is_terminal();
 
     // Show cursor first
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+    if terminal {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+    }
 
     // Disable raw mode
     let _ = crossterm::terminal::disable_raw_mode();
 
     // Leave alternate screen and cleanup
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture,
-        crossterm::style::ResetColor
-    );
+    if terminal {
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture,
+            crossterm::style::ResetColor
+        );
+    }
 
     // Flush output
     let _ = std::io::stdout().flush();
@@ -36,9 +45,9 @@ fn reset_terminal() {
     }
 }
 
-/// Simple terminal cleanup for non-interactive mode
+/// Simple terminal cleanup for non-interactive mode — escape sequences only to a terminal.
 fn reset_terminal_simple() {
-    use std::io::Write;
+    use std::io::{IsTerminal, Write};
 
     // Re-enable virtual terminal processing on Windows so that ANSI codes
     // and \n → \r\n translation work correctly after Ctrl+C.
@@ -66,11 +75,13 @@ fn reset_terminal_simple() {
     }
 
     // Ensure cursor is visible and colors are reset
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::cursor::Show,
-        crossterm::style::ResetColor
-    );
+    if std::io::stdout().is_terminal() {
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::cursor::Show,
+            crossterm::style::ResetColor
+        );
+    }
 
     // Flush output
     let _ = std::io::stdout().flush();

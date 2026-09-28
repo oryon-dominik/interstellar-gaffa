@@ -136,6 +136,34 @@ fn test_gaffa_log_file() {
     );
 }
 
+#[test]
+fn test_redirected_stdout_carries_no_escape_sequence() {
+    // Terminal restoration wrote ESC[?25h ESC[0m into a redirected log on exit.
+    let procfile_content = if cfg!(windows) {
+        "quiet: cmd /c echo plain"
+    } else {
+        "quiet: echo plain"
+    };
+    std::fs::write("test_redirect.procfile", procfile_content)
+        .expect("Failed to write test procfile");
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "run", "-p", "test_redirect.procfile"])
+        .output()
+        .expect("Failed to run gaffa");
+    let _ = std::fs::remove_file("test_redirect.procfile");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("plain"),
+        "the process output is missing: {stdout:?}"
+    );
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "escape sequence in redirected stdout: {stdout:?}"
+    );
+}
+
 /// gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log`.
 fn rotated_logs() -> Vec<std::path::PathBuf> {
     std::fs::read_dir(".")
