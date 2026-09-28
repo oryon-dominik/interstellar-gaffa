@@ -9,7 +9,7 @@ use crate::types::*;
 /// Result of parsing a Procfile: process definitions, color assignments, and max name length.
 pub struct ProcfileData {
     pub processes: HashMap<String, ProcessInfo>,
-    pub colors: HashMap<String, colored::Color>,
+    pub colors: HashMap<String, crate::paint::Color>,
     pub max_name_length: usize,
 }
 

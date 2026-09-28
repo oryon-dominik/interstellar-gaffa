@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use colored::Colorize;
+use crate::paint::Paint;
 
 pub type Result<T> = std::result::Result<T, ProcessError>;
 

@@ -23,12 +23,13 @@ pub const TERMINAL_SEPARATOR_WIDTH: usize = 79;
 pub const MAX_DISPLAY_LINES: usize = 10;
 
 // Process colors (excluding magenta which is reserved for gaffa)
-pub const PROCESS_COLORS: &[colored::Color] = &[
-    colored::Color::Cyan,
-    colored::Color::Yellow,
-    colored::Color::Blue,
-    colored::Color::Green,
-    colored::Color::BrightCyan,
-    colored::Color::BrightYellow,
-    colored::Color::BrightBlue,
+// crossterm's names: `DarkCyan` is ANSI 36, plain `Cyan` the bright 96.
+pub const PROCESS_COLORS: &[crate::paint::Color] = &[
+    crate::paint::Color::DarkCyan,
+    crate::paint::Color::DarkYellow,
+    crate::paint::Color::DarkBlue,
+    crate::paint::Color::DarkGreen,
+    crate::paint::Color::Cyan,
+    crate::paint::Color::Yellow,
+    crate::paint::Color::Blue,
 ];

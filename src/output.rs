@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use colored::{Color, Colorize};
+use crate::paint::{Color, Paint};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     sync::Mutex,
@@ -314,7 +314,7 @@ pub fn spawn_output_handlers(
                     &stderr_name,
                     max_name_len,
                     process_color,
-                    Color::Red,
+                    Color::DarkRed,
                     &line,
                 );
 

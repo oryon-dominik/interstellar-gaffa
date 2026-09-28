@@ -23,7 +23,6 @@ path = "tests/non_interactive_interrupt_test.rs"
 
 [dependencies]
 tokio = { version = "1.47.0", features = ["full"] }
-colored = "3.0.0"
 regex = "1"
 shell-words = "1.1.0"
 clap = { version = "4", features = ["derive"] }

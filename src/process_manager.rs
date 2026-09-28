@@ -3,7 +3,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colored::Colorize;
+use crate::paint::Paint;
 use tokio::{
     process::{Child, Command as TokioCommand},
     sync::{Mutex, mpsc, oneshot},
@@ -65,7 +65,7 @@ impl Default for LifecycleOptions {
 
 /// Configuration set during initialization. Rarely changes after load.
 pub(crate) struct ProcessConfig {
-    pub colors: HashMap<String, colored::Color>,
+    pub colors: HashMap<String, crate::paint::Color>,
     pub max_name_length: usize,
     pub env_vars: HashMap<String, String>,
     pub log_file: Option<Arc<Mutex<std::fs::File>>>,
@@ -389,7 +389,7 @@ impl ProcessManager {
                 .colors
                 .get(name)
                 .copied()
-                .unwrap_or(colored::Color::White);
+                .unwrap_or(crate::paint::Color::Grey);
             (max_len, color)
         };
 
@@ -969,7 +969,7 @@ impl ProcessManager {
     }
 
     /// Get a color for a process (consistent assignment).
-    pub fn get_process_color(index: usize) -> colored::Color {
+    pub fn get_process_color(index: usize) -> crate::paint::Color {
         output::get_process_color(index)
     }
 
@@ -984,7 +984,7 @@ impl ProcessManager {
     }
 
     /// Get all process info as a snapshot (name, info, color).
-    pub async fn process_snapshot(&self) -> Vec<(String, ProcessInfo, colored::Color)> {
+    pub async fn process_snapshot(&self) -> Vec<(String, ProcessInfo, crate::paint::Color)> {
         let runtime = self.runtime.lock().await;
         let config = self.config.lock().await;
         runtime
@@ -995,7 +995,7 @@ impl ProcessManager {
                     .colors
                     .get(name)
                     .copied()
-                    .unwrap_or(colored::Color::White);
+                    .unwrap_or(crate::paint::Color::Grey);
                 (name.clone(), info.clone(), color)
             })
             .collect()
@@ -1017,13 +1017,13 @@ impl ProcessManager {
     }
 
     /// Get a snapshot of process colors.
-    pub async fn get_colors(&self) -> HashMap<String, colored::Color> {
+    pub async fn get_colors(&self) -> HashMap<String, crate::paint::Color> {
         let config = self.config.lock().await;
         config.colors.clone()
     }
 
     /// Try to get process colors without blocking (for UI render loop).
-    pub fn try_get_colors(&self) -> Option<HashMap<String, colored::Color>> {
+    pub fn try_get_colors(&self) -> Option<HashMap<String, crate::paint::Color>> {
         self.config
             .try_lock()
             .ok()

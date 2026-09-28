@@ -152,7 +152,7 @@ fn print_startup_banner(
     log_path_requested: Option<&str>,
     log_path_rotated: Option<&std::path::Path>,
 ) {
-    use colored::Colorize;
+    use gaffa::paint::Paint;
 
     let version = env!("CARGO_PKG_VERSION");
     let title = format!("gaffa {version}");
@@ -394,14 +394,14 @@ async fn run_non_interactive(
 
 /// Show termination summary and exit.
 async fn show_termination_summary(manager: &ProcessManager, _was_interrupted: bool) {
-    use colored::Colorize;
+    use gaffa::paint::Paint;
 
     let snapshot = manager.process_snapshot().await;
 
     // Build rows up front so we can compute column widths from real content.
     struct Row {
         name: String,
-        color: colored::Color,
+        color: gaffa::paint::Color,
         status: String,
         runtime: String,
     }
@@ -491,7 +491,7 @@ async fn show_termination_summary(manager: &ProcessManager, _was_interrupted: bo
     let bot = format!("╰{}┴{}┴{}╯", seg(name_w), seg(status_w), seg(runtime_w));
     let v = "│".bright_black();
 
-    let colorize_status = |s: &str| -> colored::ColoredString {
+    let colorize_status = |s: &str| -> gaffa::paint::Painted {
         if s == "exit 0" {
             s.green()
         } else if s == "interrupted" {

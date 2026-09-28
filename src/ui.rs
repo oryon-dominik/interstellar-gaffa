@@ -137,7 +137,7 @@ impl UIState {
     fn get_process_color(
         &mut self,
         process_name: &str,
-        manager_color: Option<colored::Color>,
+        manager_color: Option<crate::paint::Color>,
     ) -> Color {
         if process_name == "gaffa" {
             return Color::Magenta;
@@ -145,15 +145,15 @@ impl UIState {
 
         // Use the color from ProcessManager if available
         if let Some(color) = manager_color {
-            // Convert colored::Color to ratatui::Color
+            // crossterm's `DarkCyan` is ratatui's `Cyan`, its `Cyan` ratatui's `LightCyan`.
             let ratatui_color = match color {
-                colored::Color::Cyan => Color::Cyan,
-                colored::Color::Yellow => Color::Yellow,
-                colored::Color::Blue => Color::Blue,
-                colored::Color::Green => Color::Green,
-                colored::Color::BrightCyan => Color::LightCyan,
-                colored::Color::BrightYellow => Color::LightYellow,
-                colored::Color::BrightBlue => Color::LightBlue,
+                crate::paint::Color::DarkCyan => Color::Cyan,
+                crate::paint::Color::DarkYellow => Color::Yellow,
+                crate::paint::Color::DarkBlue => Color::Blue,
+                crate::paint::Color::DarkGreen => Color::Green,
+                crate::paint::Color::Cyan => Color::LightCyan,
+                crate::paint::Color::Yellow => Color::LightYellow,
+                crate::paint::Color::Blue => Color::LightBlue,
                 _ => Color::White,
             };
             self.process_colors
@@ -823,7 +823,7 @@ fn run_app<B: Backend>(
 
                 // Sync colors from ProcessManager
                 if let Some(manager_colors) = manager.try_get_colors() {
-                    let processes: Vec<(String, Option<colored::Color>)> = ui_state
+                    let processes: Vec<(String, Option<crate::paint::Color>)> = ui_state
                         .logs
                         .iter()
                         .map(|log| {
