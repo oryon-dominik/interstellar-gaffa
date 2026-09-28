@@ -1,6 +1,6 @@
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[test]
 fn test_gaffa_help() {
@@ -82,35 +82,63 @@ fn test_gaffa_log_file() {
         "logger: echo 'Log this message'"
     };
     std::fs::write("test_log.procfile", procfile_content).expect("Failed to write test procfile");
+    // A failed earlier run leaves its rotated files behind; start from none.
+    for p in rotated_logs() {
+        let _ = std::fs::remove_file(p);
+    }
 
-    // Start gaffa with log file
-    let handle = thread::spawn(|| {
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "--",
-                "run",
-                "-p",
-                "test_log.procfile",
-                "--log-file",
-                "test_output.log",
-            ])
-            .spawn()
-            .expect("Failed to start gaffa");
+    let mut child = Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "run",
+            "-p",
+            "test_log.procfile",
+            "--log-file",
+            "test_output.log",
+        ])
+        .spawn()
+        .expect("Failed to start gaffa");
 
-        // Let it run for a bit
-        thread::sleep(Duration::from_secs(2));
+    // Wait for the line instead of a fixed time: under gaffa, pwsh took 1.7 to
+    // 2.4 s to print its first line on Windows (measured 2026-09-28), and a
+    // 2 s sleep killed gaffa before the child had written anything.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let logged = loop {
+        let found = rotated_logs().into_iter().any(|p| {
+            std::fs::read_to_string(p)
+                .map(|content| content.contains("logger"))
+                .unwrap_or(false)
+        });
+        if found || Instant::now() > deadline {
+            break found;
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
 
-        // Kill the process
-        let _ = child.kill();
-        child.wait().expect("Failed to wait for child");
-    });
+    let _ = child.kill();
+    child.wait().expect("Failed to wait for child");
 
-    handle.join().expect("Thread panicked");
+    let rotated = rotated_logs();
+    let _ = std::fs::remove_file("test_log.procfile");
+    for p in &rotated {
+        let _ = std::fs::remove_file(p);
+    }
+    let _ = std::fs::remove_file("test_output.log");
 
-    // gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log`,
-    // so find the most recent rotated file produced by this session.
-    let rotated: Vec<std::path::PathBuf> = std::fs::read_dir(".")
+    assert!(
+        !rotated.is_empty(),
+        "No rotated test_output-*.log file was created"
+    );
+    assert!(
+        logged,
+        "the logger line never reached the log file within 30 s"
+    );
+}
+
+/// gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log`.
+fn rotated_logs() -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(".")
         .expect("Failed to read current directory")
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
@@ -119,25 +147,7 @@ fn test_gaffa_log_file() {
                 .map(|n| n.starts_with("test_output-") && n.ends_with(".log"))
                 .unwrap_or(false)
         })
-        .collect();
-    assert!(
-        !rotated.is_empty(),
-        "No rotated test_output-*.log file was created"
-    );
-
-    let log_path = rotated
-        .iter()
-        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-        .expect("Failed to pick newest rotated log");
-    let log_content = std::fs::read_to_string(log_path).expect("Failed to read log file");
-    assert!(log_content.contains("logger"));
-
-    // Cleanup
-    let _ = std::fs::remove_file("test_log.procfile");
-    for p in &rotated {
-        let _ = std::fs::remove_file(p);
-    }
-    let _ = std::fs::remove_file("test_output.log");
+        .collect()
 }
 
 #[test]
