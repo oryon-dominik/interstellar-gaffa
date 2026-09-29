@@ -1,0 +1,4 @@
+# Manual-testing fixture — native PowerShell lines (gaffa's default Windows shell).
+sleep1: while ($true) { Start-Sleep -Seconds 1; Write-Host 'Process 1 running...' }
+sleep2: while ($true) { Start-Sleep -Seconds 1; Write-Host 'Process 2 running...' }
+stubborn: trap { Write-Host 'Ignoring signal'; continue } while ($true) { Start-Sleep -Seconds 1; Write-Host 'Stubborn process...' }
