@@ -1,7 +1,7 @@
 //! Terminal styling that falls silent where it would be noise.
 //!
 //! Replaces the `colored` crate, whose MPL-2.0 would have obliged every
-//! binary release to carry its source. crossterm, already linked, does the
+//! binary release to make its source available. crossterm, already linked, does the
 //! styling; this module keeps `colored`'s method names and the two things
 //! crossterm does not: no escape sequence at all when stdout is no terminal
 //! or `NO_COLOR` is set — crossterm drops only the colours and still writes
@@ -27,24 +27,6 @@ pub struct Painted {
     style: ContentStyle,
 }
 
-impl Painted {
-    /// This text without any escape sequence.
-    pub fn plain(&self) -> Rendered<'_> {
-        Rendered {
-            painted: self,
-            styled: false,
-        }
-    }
-
-    /// This text with its style, whatever stdout is.
-    pub fn styled(&self) -> Rendered<'_> {
-        Rendered {
-            painted: self,
-            styled: true,
-        }
-    }
-}
-
 impl fmt::Display for Painted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rendered = Rendered {
@@ -56,7 +38,7 @@ impl fmt::Display for Painted {
 }
 
 /// One way of showing a `Painted` — the formatter's width applies to the text alone.
-pub struct Rendered<'a> {
+struct Rendered<'a> {
     painted: &'a Painted,
     styled: bool,
 }
@@ -163,16 +145,30 @@ impl Paint for Painted {
 mod tests {
     use super::*;
 
+    fn plain(painted: &Painted) -> Rendered<'_> {
+        Rendered {
+            painted,
+            styled: false,
+        }
+    }
+
+    fn styled(painted: &Painted) -> Rendered<'_> {
+        Rendered {
+            painted,
+            styled: true,
+        }
+    }
+
     #[test]
     fn plain_output_carries_no_escape_sequence() {
         let painted = "│".red().dimmed().bold();
 
-        assert_eq!(painted.plain().to_string(), "│");
+        assert_eq!(plain(&painted).to_string(), "│");
     }
 
     #[test]
     fn styled_output_wraps_the_text_in_escape_sequences() {
-        let rendered = "gaffa".magenta().styled().to_string();
+        let rendered = styled(&"gaffa".magenta()).to_string();
 
         assert!(rendered.starts_with('\u{1b}'), "{rendered:?}");
         assert!(rendered.contains("gaffa"));
@@ -188,10 +184,10 @@ mod tests {
 
     #[test]
     fn a_width_pads_the_text_not_the_escape_sequences() {
-        assert_eq!(format!("[{:>9}]", "RUNNING".green().plain()), "[  RUNNING]");
-        assert_eq!(format!("[{:<9}]", "web".cyan().plain()), "[web      ]");
-        assert_eq!(format!("[{:9}]", "web".cyan().plain()), "[web      ]");
-        assert!(format!("{:>9}", "RUNNING".green().styled()).contains("  RUNNING"));
+        assert_eq!(format!("[{:>9}]", plain(&"RUNNING".green())), "[  RUNNING]");
+        assert_eq!(format!("[{:<9}]", plain(&"web".cyan())), "[web      ]");
+        assert_eq!(format!("[{:9}]", plain(&"web".cyan())), "[web      ]");
+        assert!(format!("{:>9}", styled(&"RUNNING".green())).contains("  RUNNING"));
     }
 
     #[test]
