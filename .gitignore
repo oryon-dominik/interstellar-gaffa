@@ -1,9 +1,8 @@
 # Rust
 target/
 
-# Project specific
+# Project specific — rotated logs of manual runs (`gaffa run --log-file`)
 *.log
-test_*
 
 # assistants
 .claude/
