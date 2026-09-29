@@ -1,6 +1,6 @@
 [package]
 name = "gaffa"
-version = "2026.9.0"
+version = "2026.9.1"
 edition = "2024"
 authors = ["<oryon@cyberise.de>"]
 description = "Cross-platform process manager for Procfile-based process-collections."
