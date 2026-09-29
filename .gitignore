@@ -7,3 +7,6 @@ target/
 # assistants
 .claude/
 CLAUDE.md
+
+# Agent worktrees — separate checkouts, never part of this repository.
+.worktrees/
