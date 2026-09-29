@@ -44,14 +44,14 @@ mod test {
 
         // Create test env file
         let env_content = "KEY1=value1\nKEY2=value2\n# Comment\n\nKEY3=value3";
-        std::fs::write("test_env_file", env_content).unwrap();
+        let path = std::env::temp_dir().join(format!("gaffa_test_env_file_{}", std::process::id()));
+        let path = path.to_string_lossy().into_owned();
+        std::fs::write(&path, env_content).unwrap();
 
         let mut env_vars = HashMap::new();
 
         rt.block_on(async {
-            crate::parse_env_file("test_env_file", &mut env_vars)
-                .await
-                .unwrap();
+            crate::parse_env_file(&path, &mut env_vars).await.unwrap();
         });
 
         assert_eq!(env_vars.get("KEY1"), Some(&"value1".to_string()));
@@ -60,7 +60,7 @@ mod test {
         assert_eq!(env_vars.len(), 3);
 
         // Cleanup
-        std::fs::remove_file("test_env_file").unwrap();
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
@@ -72,14 +72,14 @@ mod test {
 
         // Test with spaces and quotes
         let env_content = "KEY1 = value with spaces\nKEY2=\"quoted value\"\nKEY3=";
-        std::fs::write("test_env_edge", env_content).unwrap();
+        let path = std::env::temp_dir().join(format!("gaffa_test_env_edge_{}", std::process::id()));
+        let path = path.to_string_lossy().into_owned();
+        std::fs::write(&path, env_content).unwrap();
 
         let mut env_vars = HashMap::new();
 
         rt.block_on(async {
-            crate::parse_env_file("test_env_edge", &mut env_vars)
-                .await
-                .unwrap();
+            crate::parse_env_file(&path, &mut env_vars).await.unwrap();
         });
 
         assert_eq!(env_vars.get("KEY1"), Some(&"value with spaces".to_string()));
@@ -87,7 +87,7 @@ mod test {
         assert_eq!(env_vars.get("KEY3"), Some(&"".to_string()));
 
         // Cleanup
-        std::fs::remove_file("test_env_edge").unwrap();
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

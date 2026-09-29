@@ -1,6 +1,13 @@
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Where a test writes its throwaway files: cargo's scratch dir under target/,
+/// never the package root.
+fn scratch(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join(name)
+}
 
 #[test]
 fn test_gaffa_help() {
@@ -49,13 +56,15 @@ fn test_gaffa_with_test_procfile() {
     } else {
         "echo: echo 'Hello from test'"
     };
-    std::fs::write("test_integration.procfile", procfile_content)
-        .expect("Failed to write test procfile");
+    let procfile = scratch("test_integration.procfile");
+    std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
     // Start gaffa with the test procfile in a separate thread
-    let handle = thread::spawn(|| {
+    let spawned = procfile.clone();
+    let handle = thread::spawn(move || {
         let mut child = Command::new("cargo")
-            .args(["run", "--", "run", "-p", "test_integration.procfile"])
+            .args(["run", "--", "run", "-p"])
+            .arg(&spawned)
             .spawn()
             .expect("Failed to start gaffa");
 
@@ -70,7 +79,7 @@ fn test_gaffa_with_test_procfile() {
     handle.join().expect("Thread panicked");
 
     // Cleanup
-    let _ = std::fs::remove_file("test_integration.procfile");
+    let _ = std::fs::remove_file(&procfile);
 }
 
 #[test]
@@ -81,22 +90,19 @@ fn test_gaffa_log_file() {
     } else {
         "logger: echo 'Log this message'"
     };
-    std::fs::write("test_log.procfile", procfile_content).expect("Failed to write test procfile");
+    let procfile = scratch("test_log.procfile");
+    let log_file = scratch("test_output.log");
+    std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
     // A failed earlier run leaves its rotated files behind; start from none.
     for p in rotated_logs() {
         let _ = std::fs::remove_file(p);
     }
 
     let mut child = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "run",
-            "-p",
-            "test_log.procfile",
-            "--log-file",
-            "test_output.log",
-        ])
+        .args(["run", "--", "run", "-p"])
+        .arg(&procfile)
+        .arg("--log-file")
+        .arg(&log_file)
         .spawn()
         .expect("Failed to start gaffa");
 
@@ -120,11 +126,11 @@ fn test_gaffa_log_file() {
     child.wait().expect("Failed to wait for child");
 
     let rotated = rotated_logs();
-    let _ = std::fs::remove_file("test_log.procfile");
+    let _ = std::fs::remove_file(&procfile);
     for p in &rotated {
         let _ = std::fs::remove_file(p);
     }
-    let _ = std::fs::remove_file("test_output.log");
+    let _ = std::fs::remove_file(&log_file);
 
     assert!(
         !rotated.is_empty(),
@@ -144,14 +150,15 @@ fn test_redirected_stdout_carries_no_escape_sequence() {
     } else {
         "quiet: echo plain"
     };
-    std::fs::write("test_redirect.procfile", procfile_content)
-        .expect("Failed to write test procfile");
+    let procfile = scratch("test_redirect.procfile");
+    std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
     let output = Command::new("cargo")
-        .args(["run", "--", "run", "-p", "test_redirect.procfile"])
+        .args(["run", "--", "run", "-p"])
+        .arg(&procfile)
         .output()
         .expect("Failed to run gaffa");
-    let _ = std::fs::remove_file("test_redirect.procfile");
+    let _ = std::fs::remove_file(&procfile);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -164,10 +171,11 @@ fn test_redirected_stdout_carries_no_escape_sequence() {
     );
 }
 
-/// gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log`.
-fn rotated_logs() -> Vec<std::path::PathBuf> {
-    std::fs::read_dir(".")
-        .expect("Failed to read current directory")
+/// gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log` beside it
+/// (`rotate_log_path` in src/bin/gaffa.rs), so in the scratch dir.
+fn rotated_logs() -> Vec<PathBuf> {
+    std::fs::read_dir(env!("CARGO_TARGET_TMPDIR"))
+        .expect("Failed to read the scratch directory")
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
             p.file_name()
@@ -186,21 +194,16 @@ fn test_gaffa_specific_processes() {
     } else {
         "web: echo 'Web server'\nworker: echo 'Worker process'\nscheduler: echo 'Scheduler'"
     };
-    std::fs::write("test_specific.procfile", procfile_content)
-        .expect("Failed to write test procfile");
+    let procfile = scratch("test_specific.procfile");
+    std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
     // Start gaffa with only specific processes
-    let handle = thread::spawn(|| {
+    let spawned = procfile.clone();
+    let handle = thread::spawn(move || {
         let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "--",
-                "run",
-                "-p",
-                "test_specific.procfile",
-                "web",
-                "worker",
-            ])
+            .args(["run", "--", "run", "-p"])
+            .arg(&spawned)
+            .args(["web", "worker"])
             .spawn()
             .expect("Failed to start gaffa");
 
@@ -215,5 +218,5 @@ fn test_gaffa_specific_processes() {
     handle.join().expect("Thread panicked");
 
     // Cleanup
-    let _ = std::fs::remove_file("test_specific.procfile");
+    let _ = std::fs::remove_file(&procfile);
 }

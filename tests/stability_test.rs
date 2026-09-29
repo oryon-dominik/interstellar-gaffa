@@ -31,11 +31,22 @@ use tokio::sync::Mutex;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// A throwaway file's path in cargo's scratch dir under target/ — never the package root.
+fn scratch(name: &str) -> String {
+    std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Create a temporary Procfile with the given content and return its path.
 fn create_procfile(content: &str) -> String {
     static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let path = format!("test_stability_procfile_{}_{count}.txt", std::process::id());
+    let path = scratch(&format!(
+        "test_stability_procfile_{}_{count}.txt",
+        std::process::id()
+    ));
     std::fs::write(&path, content).expect("Failed to write test procfile");
     path
 }
@@ -784,7 +795,7 @@ async fn test_log_file_write() {
     let manager = Arc::new(ProcessManager::new());
     let content = format!("logger: {}", echo_command());
     let path = create_procfile(&content);
-    let log_path = format!("test_stability_log_{}.txt", std::process::id());
+    let log_path = scratch(&format!("test_stability_log_{}.txt", std::process::id()));
 
     // Set up log file
     let log_file = std::fs::OpenOptions::new()
@@ -964,7 +975,7 @@ async fn test_environment_variables_applied_to_process() {
         "env_test: sh -c 'echo $GAFFA_TEST_VAR'".to_string()
     };
     let path = create_procfile(&content);
-    let log_path = format!("test_env_log_{}.txt", std::process::id());
+    let log_path = scratch(&format!("test_env_log_{}.txt", std::process::id()));
 
     // Set env var and log file
     let mut env_vars = std::collections::HashMap::new();

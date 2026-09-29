@@ -1190,7 +1190,11 @@ mod tests {
     fn create_test_procfile(content: &str) -> String {
         static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let path = format!("test_procfile_{}_{}.txt", std::process::id(), count);
+        let name = format!("gaffa_test_procfile_{}_{}.txt", std::process::id(), count);
+        let path = std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned();
         std::fs::write(&path, content).expect("Failed to write test procfile");
         path
     }

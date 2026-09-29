@@ -15,26 +15,23 @@ fn test_interactive_flag() {
 #[test]
 #[ignore] // This test requires building the binary
 fn test_non_interactive_output() {
-    // Create a test Procfile
+    // Create a test Procfile in cargo's scratch dir, never the package root
+    let procfile =
+        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("test_procfile_non_interactive.txt");
     std::fs::write(
-        "test_procfile_non_interactive.txt",
+        &procfile,
         "echo_test: echo Hello from non-interactive mode\n",
     )
     .expect("Failed to write test procfile");
 
     // Run in default non-interactive mode (no --interactive flag)
     let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "run",
-            "--procfile",
-            "test_procfile_non_interactive.txt",
-        ])
+        .args(["run", "--", "run", "--procfile"])
+        .arg(&procfile)
         .output();
 
     // Clean up
-    let _ = std::fs::remove_file("test_procfile_non_interactive.txt");
+    let _ = std::fs::remove_file(&procfile);
 
     if let Ok(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
