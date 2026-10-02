@@ -60,7 +60,7 @@ jobs:
           git config user.name "@ci-bot"
           git config user.email "ci-bot@users.noreply.github.com"
           git add Cargo.toml Cargo.lock documentation/CHANGES.md
-          git commit --message "chore(release): tag version=$VERSION [skip ci]"
+          git commit --trailer "cyberise-producer: ci/release" --message "chore(release): tag version=$VERSION [skip ci]"
           git tag --annotate "$VERSION" --message "Release $VERSION"
           git push --follow-tags
 
