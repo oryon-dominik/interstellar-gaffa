@@ -34,7 +34,7 @@ impl Shell {
             .to_ascii_lowercase();
 
         let (kind, args) = match stem.as_str() {
-            "cmd" => (ShellKind::Cmd, vec!["/C".to_string()]),
+            "cmd" => (ShellKind::Cmd, vec!["/S".to_string(), "/C".to_string()]),
             "pwsh" | "powershell" => (
                 ShellKind::PowerShell,
                 vec!["-NoProfile".to_string(), "-Command".to_string()],
@@ -52,12 +52,20 @@ impl Shell {
     /// Prepare a command line for this shell so the script text arrives
     /// verbatim.
     ///
+    /// `cmd /C` drops the first and the last quote of a line with more than
+    /// two quotes (`cmd /?`), which breaks a line starting with a quoted
+    /// program. Under `/S` it always drops exactly the outer pair, so the
+    /// line is wrapped in one.
+    ///
     /// PowerShell's `-Command` consumes the command line through argv
     /// tokenization, which strips unescaped double quotes — they must be
     /// MSVCRT-escaped (`\"`, with preceding backslashes doubled) to survive.
-    /// `cmd /C` and POSIX `sh -c` receive the line verbatim already.
+    /// POSIX `sh -c` receives the line verbatim already.
     #[must_use]
     pub fn prepare_command<'a>(&self, command: &'a str) -> std::borrow::Cow<'a, str> {
+        if self.kind == ShellKind::Cmd {
+            return std::borrow::Cow::Owned(format!("\"{command}\""));
+        }
         if self.kind != ShellKind::PowerShell || !command.contains('"') {
             return std::borrow::Cow::Borrowed(command);
         }
@@ -135,7 +143,7 @@ mod tests {
     fn test_from_program_cmd() {
         let shell = Shell::from_program("cmd");
         assert_eq!(shell.program, "cmd");
-        assert_eq!(shell.args, vec!["/C"]);
+        assert_eq!(shell.args, vec!["/S", "/C"]);
     }
 
     #[test]
@@ -166,11 +174,9 @@ mod tests {
 
     #[test]
     fn test_prepare_command_passthrough() {
-        // No escaping for cmd/POSIX shells or quote-free commands.
+        // No escaping for POSIX shells or quote-free PowerShell commands.
         let sh = Shell::from_program("sh");
         assert_eq!(sh.prepare_command(r#"echo "hi""#), r#"echo "hi""#);
-        let cmd = Shell::from_program("cmd");
-        assert_eq!(cmd.prepare_command(r#"echo "hi""#), r#"echo "hi""#);
         let pwsh = Shell::from_program("pwsh");
         assert_eq!(pwsh.prepare_command("echo hi"), "echo hi");
     }
@@ -184,6 +190,15 @@ mod tests {
         );
         // Backslashes before a quote are doubled (MSVCRT rules).
         assert_eq!(pwsh.prepare_command(r#"echo "a\""#), r#"echo \"a\\\""#);
+    }
+
+    #[test]
+    fn test_prepare_command_wraps_the_line_for_cmd() {
+        let cmd = Shell::from_program("cmd");
+        assert_eq!(
+            cmd.prepare_command(r#""C:\a b\x.exe" -c "y""#),
+            r#"""C:\a b\x.exe" -c "y"""#
+        );
     }
 
     #[test]

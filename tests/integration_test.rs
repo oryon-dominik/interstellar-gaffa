@@ -171,6 +171,33 @@ fn test_redirected_stdout_carries_no_escape_sequence() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn test_cmd_runs_a_line_that_starts_with_a_quoted_program() {
+    // Unwrapped, cmd /C strips the first and last quote of a line with more
+    // than two quotes — the program path and the last argument lose theirs.
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is set on Windows");
+    let procfile = scratch("test_cmd_quoted.procfile");
+    std::fs::write(
+        &procfile,
+        format!(r#"quoted: "{system_root}\System32\cmd.exe" /c "echo quoted line""#),
+    )
+    .expect("Failed to write test procfile");
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "run", "--shell", "cmd", "-p"])
+        .arg(&procfile)
+        .output()
+        .expect("Failed to run gaffa");
+    let _ = std::fs::remove_file(&procfile);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("quoted line"),
+        "the quoted line did not run as typed: {stdout:?}"
+    );
+}
+
 /// gaffa rotates `test_output.log` to `test_output-YYYY-MM-DD_NNN.log` beside it
 /// (`rotate_log_path` in src/bin/gaffa.rs), so in the scratch dir.
 fn rotated_logs() -> Vec<PathBuf> {
