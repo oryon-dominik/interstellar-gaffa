@@ -1,4 +1,31 @@
 ---
+## [2026.11.0](https://github.com/oryon-dominik/interstellar-gaffa/compare/2026.9.1..2026.11.0) - 2026-11-05
+
+### Git
+
+#### Chores
+
+- **(git)** ignore agent worktrees — separate checkouts never belong in the index - ([881cfc0](https://github.com/oryon-dominik/interstellar-gaffa/commit/881cfc01d265b520fb9577d9a13fe9cf0d9cd47e))
+
+
+
+### Release
+
+#### Continuous Integration
+
+- **(release)** the release commit signs with the producer trailer — inspections skip it - ([a6d8a49](https://github.com/oryon-dominik/interstellar-gaffa/commit/a6d8a49aef6437639fb66e7858ced48e776fa055))
+
+
+
+### Shell
+
+#### Bug Fixes
+
+- **(shell)** run cmd lines that start with a quoted program as typed - ([080cc67](https://github.com/oryon-dominik/interstellar-gaffa/commit/080cc67a042e96503d310d5e14ee0fdb21156aae))
+
+
+
+---
 ## [2026.9.1](https://github.com/oryon-dominik/interstellar-gaffa/compare/2026.9.0..2026.9.1) - 2026-09-29
 
 ### Gaffa
