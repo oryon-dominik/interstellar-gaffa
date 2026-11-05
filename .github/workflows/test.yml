@@ -1,0 +1,37 @@
+# The test suite on both systems gaffa ships for. Windows counts: the shells differ
+# there, and cmd quoting is one of the defects only that system shows.
+name: Test
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+    branches: [trunk]
+  # The version workflow runs this gate before it mints a number.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install rustup where the runner image lacks it
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs |
+              sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+          fi
+
+      - run: cargo test --locked

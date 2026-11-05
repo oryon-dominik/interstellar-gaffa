@@ -13,7 +13,14 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   version:
+    # After the tests, not beside them: a tag over a red suite is a release of a broken crate.
+    needs: test
+    # Dispatched from another branch, it would tag code trunk does not carry.
+    if: github.ref == 'refs/heads/trunk'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
