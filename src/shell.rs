@@ -148,14 +148,18 @@ mod tests {
 
     #[test]
     fn test_from_program_pwsh_variants() {
-        for program in [
-            "pwsh",
-            "powershell",
-            r"C:\Program Files\PowerShell\7\pwsh.exe",
-        ] {
+        for program in ["pwsh", "powershell"] {
             let shell = Shell::from_program(program);
             assert_eq!(shell.args, vec!["-NoProfile", "-Command"]);
         }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_from_program_pwsh_full_path() {
+        // Only Windows splits a path at the backslash.
+        let shell = Shell::from_program(r"C:\Program Files\PowerShell\7\pwsh.exe");
+        assert_eq!(shell.args, vec!["-NoProfile", "-Command"]);
     }
 
     #[test]
