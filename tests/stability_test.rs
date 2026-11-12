@@ -159,12 +159,10 @@ async fn test_natural_exit_removes_from_children() {
 
 #[tokio::test]
 async fn test_natural_exit_handle_cleanup() {
-    // KNOWN BUG [HANDLE_LEAK]: monitor_handles and output_handles are NOT
-    // cleaned up when a process exits naturally. Only stop_process_internal()
-    // calls .abort() and removes them. The monitor task completes but its
-    // JoinHandle stays in the HashMap forever.
+    // The process must outlive the first check: an echo exits within the
+    // 200ms wait and its handles are already gone.
     let manager = Arc::new(ProcessManager::new());
-    let content = format!("quick: {}", echo_command());
+    let content = format!("quick: {}", short_sleep_command());
     let path = create_procfile(&content);
 
     manager.load_procfile(&path).await.unwrap();
@@ -184,7 +182,7 @@ async fn test_natural_exit_handle_cleanup() {
     );
 
     // Wait for natural exit
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(6)).await;
 
     // FIXED [HANDLE_LEAK]: handles are now cleaned up on natural exit
     let monitor_count = manager.monitor_handle_count().await;
