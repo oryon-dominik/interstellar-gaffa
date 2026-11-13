@@ -106,7 +106,7 @@ impl Default for AppState {
 struct UIState {
     logs: VecDeque<LogEntry>,
     input: String,
-    cursor_position: usize, // Track cursor position within input
+    cursor_position: usize, // Byte index into `input`, always on a char boundary
     command_history: Vec<String>,
     history_index: Option<usize>,
     process_status: Vec<String>,
@@ -167,6 +167,100 @@ impl UIState {
             .process_colors
             .entry(process_name.to_string())
             .or_insert(PROCESS_COLORS[next_color_index])
+    }
+
+    fn insert_char(&mut self, c: char) {
+        self.input.insert(self.cursor_position, c);
+        self.cursor_position += c.len_utf8();
+    }
+
+    fn insert_str(&mut self, text: &str) {
+        self.input.insert_str(self.cursor_position, text);
+        self.cursor_position += text.len();
+    }
+
+    /// Remove the character before the cursor; true when something changed.
+    fn backspace(&mut self) -> bool {
+        if !self.move_left() {
+            return false;
+        }
+        self.input.remove(self.cursor_position);
+        true
+    }
+
+    /// Remove the character under the cursor; true when something changed.
+    fn delete(&mut self) -> bool {
+        if self.cursor_position >= self.input.len() {
+            return false;
+        }
+        self.input.remove(self.cursor_position);
+        true
+    }
+
+    fn move_left(&mut self) -> bool {
+        match self.input[..self.cursor_position]
+            .char_indices()
+            .next_back()
+        {
+            Some((index, _)) => {
+                self.cursor_position = index;
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn move_right(&mut self) -> bool {
+        match self.input[self.cursor_position..].chars().next() {
+            Some(c) => {
+                self.cursor_position += c.len_utf8();
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn move_home(&mut self) {
+        self.cursor_position = 0;
+    }
+
+    fn move_end(&mut self) {
+        self.cursor_position = self.input.len();
+    }
+
+    /// The screen column of the cursor inside the input box.
+    fn cursor_column(&self) -> usize {
+        self.input[..self.cursor_position].chars().count()
+    }
+
+    /// Recall the previous command; true when the input changed.
+    fn history_up(&mut self) -> bool {
+        let index = match self.history_index {
+            None if !self.command_history.is_empty() => self.command_history.len() - 1,
+            Some(index) if index > 0 => index - 1,
+            _ => return false,
+        };
+        self.history_index = Some(index);
+        self.input = self.command_history[index].clone();
+        self.move_end();
+        true
+    }
+
+    /// Recall the next command, or clear the input past the newest; true when the input changed.
+    fn history_down(&mut self) -> bool {
+        match self.history_index {
+            Some(index) if index + 1 < self.command_history.len() => {
+                self.history_index = Some(index + 1);
+                self.input = self.command_history[index + 1].clone();
+            }
+            Some(_) => {
+                self.history_index = None;
+                self.input.clear();
+            }
+            None => return false,
+        }
+        self.move_end();
+        true
     }
 }
 
@@ -619,9 +713,7 @@ fn run_app<B: Backend>(
                         KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             // Paste from clipboard
                             if let Ok(text) = cli_clipboard::get_contents() {
-                                let pos = ui_state.cursor_position;
-                                ui_state.input.insert_str(pos, &text);
-                                ui_state.cursor_position += text.len();
+                                ui_state.insert_str(&text);
                                 needs_redraw = true;
                             }
                         }
@@ -631,24 +723,11 @@ fn run_app<B: Backend>(
                             needs_redraw = true;
                         }
                         KeyCode::Char(c) => {
-                            let pos = ui_state.cursor_position;
-                            ui_state.input.insert(pos, c);
-                            ui_state.cursor_position += 1;
+                            ui_state.insert_char(c);
                             needs_redraw = true;
                         }
-                        KeyCode::Backspace => {
-                            if ui_state.cursor_position > 0 {
-                                ui_state.cursor_position -= 1;
-                                ui_state.input.remove(ui_state.cursor_position);
-                                needs_redraw = true;
-                            }
-                        }
-                        KeyCode::Delete => {
-                            if ui_state.cursor_position < ui_state.input.len() {
-                                ui_state.input.remove(ui_state.cursor_position);
-                                needs_redraw = true;
-                            }
-                        }
+                        KeyCode::Backspace => needs_redraw |= ui_state.backspace(),
+                        KeyCode::Delete => needs_redraw |= ui_state.delete(),
                         KeyCode::Enter => {
                             let input = ui_state.input.trim().to_string();
                             if !input.is_empty() {
@@ -672,62 +751,18 @@ fn run_app<B: Backend>(
                                 needs_redraw = true;
                             }
                         }
-                        KeyCode::Left => {
-                            if ui_state.cursor_position > 0 {
-                                ui_state.cursor_position -= 1;
-                                needs_redraw = true;
-                            }
-                        }
-                        KeyCode::Right => {
-                            if ui_state.cursor_position < ui_state.input.len() {
-                                ui_state.cursor_position += 1;
-                                needs_redraw = true;
-                            }
-                        }
+                        KeyCode::Left => needs_redraw |= ui_state.move_left(),
+                        KeyCode::Right => needs_redraw |= ui_state.move_right(),
                         KeyCode::Home if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            // Move cursor to beginning of input
-                            ui_state.cursor_position = 0;
+                            ui_state.move_home();
                             needs_redraw = true;
                         }
                         KeyCode::End if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            // Move cursor to end of input
-                            ui_state.cursor_position = ui_state.input.len();
+                            ui_state.move_end();
                             needs_redraw = true;
                         }
-                        KeyCode::Up => {
-                            if !ui_state.command_history.is_empty() {
-                                match ui_state.history_index {
-                                    None => {
-                                        ui_state.history_index =
-                                            Some(ui_state.command_history.len() - 1);
-                                        ui_state.input = ui_state.command_history
-                                            [ui_state.command_history.len() - 1]
-                                            .clone();
-                                        needs_redraw = true;
-                                    }
-                                    Some(idx) if idx > 0 => {
-                                        ui_state.history_index = Some(idx - 1);
-                                        ui_state.input = ui_state.command_history[idx - 1].clone();
-                                        needs_redraw = true;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        KeyCode::Down => match ui_state.history_index {
-                            Some(idx) if idx < ui_state.command_history.len() - 1 => {
-                                ui_state.history_index = Some(idx + 1);
-                                ui_state.input = ui_state.command_history[idx + 1].clone();
-                                needs_redraw = true;
-                            }
-                            Some(_) => {
-                                ui_state.history_index = None;
-                                ui_state.input.clear();
-                                ui_state.cursor_position = 0;
-                                needs_redraw = true;
-                            }
-                            _ => {}
-                        },
+                        KeyCode::Up => needs_redraw |= ui_state.history_up(),
+                        KeyCode::Down => needs_redraw |= ui_state.history_down(),
                         KeyCode::PageUp => {
                             // Scroll up by one page
                             let page_size = 10;
@@ -1081,7 +1116,7 @@ fn render_input_with_help(f: &mut Frame, area: Rect, ui_state: &UIState) {
 
     // Show cursor at the correct position
     f.set_cursor_position((
-        area.x + u16::try_from(ui_state.cursor_position).unwrap_or(0) + 1,
+        area.x + u16::try_from(ui_state.cursor_column()).unwrap_or(0) + 1,
         area.y + 1,
     ));
 }
@@ -1115,5 +1150,89 @@ mod tests {
 
         // Same process should get same color
         assert_eq!(ui_state.get_process_color("web", None), color1);
+    }
+
+    fn typed(text: &str) -> UIState {
+        let mut ui_state = UIState::new();
+        for c in text.chars() {
+            ui_state.insert_char(c);
+        }
+        ui_state
+    }
+
+    #[test]
+    fn test_typing_multibyte_characters_keeps_them_in_order() {
+        let mut ui_state = typed("äöü€");
+        ui_state.insert_char('x');
+        ui_state.insert_str("ß!");
+
+        assert_eq!(ui_state.input, "äöü€xß!");
+        assert_eq!(ui_state.cursor_position, ui_state.input.len());
+    }
+
+    #[test]
+    fn test_left_and_right_step_over_whole_multibyte_characters() {
+        let mut ui_state = typed("a€b");
+
+        assert!(ui_state.move_left());
+        assert!(ui_state.move_left());
+        ui_state.insert_char('x');
+        assert_eq!(ui_state.input, "ax€b");
+
+        assert!(ui_state.move_right());
+        ui_state.insert_char('y');
+        assert_eq!(ui_state.input, "ax€yb");
+
+        ui_state.move_home();
+        assert!(!ui_state.move_left());
+        ui_state.move_end();
+        assert!(!ui_state.move_right());
+    }
+
+    #[test]
+    fn test_backspace_and_delete_remove_whole_multibyte_characters() {
+        let mut ui_state = typed("aä€");
+
+        assert!(ui_state.backspace());
+        assert_eq!(ui_state.input, "aä");
+
+        ui_state.move_home();
+        assert!(ui_state.move_right());
+        assert!(ui_state.delete());
+        assert_eq!(ui_state.input, "a");
+        assert!(!ui_state.delete());
+    }
+
+    #[test]
+    fn test_history_recall_puts_the_cursor_at_the_end() {
+        let mut ui_state = UIState::new();
+        ui_state.command_history = vec!["restart wörker".to_string(), "s web".to_string()];
+
+        assert!(ui_state.history_up());
+        assert!(ui_state.history_up());
+        ui_state.insert_char('!');
+        assert_eq!(ui_state.input, "restart wörker!");
+
+        assert!(ui_state.history_down());
+        ui_state.insert_char('?');
+        assert_eq!(ui_state.input, "s web?");
+    }
+
+    #[test]
+    fn test_history_recall_from_a_longer_input_does_not_leave_the_cursor_past_the_end() {
+        let mut ui_state = typed("a long half-typed command");
+        ui_state.command_history = vec!["s".to_string()];
+
+        assert!(ui_state.history_up());
+        ui_state.insert_char('x');
+        assert_eq!(ui_state.input, "sx");
+    }
+
+    #[test]
+    fn test_cursor_column_counts_characters_not_bytes() {
+        let mut ui_state = typed("äöü€");
+        assert_eq!(ui_state.cursor_column(), 4);
+        ui_state.move_left();
+        assert_eq!(ui_state.cursor_column(), 3);
     }
 }
