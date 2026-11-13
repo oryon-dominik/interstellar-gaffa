@@ -361,7 +361,7 @@ pub async fn run_terminal_ui(
     let state_for_startup = Arc::clone(&state);
     let manager_for_startup = Arc::clone(&manager);
     let procfile_path_owned = procfile_path.to_string();
-    tokio::spawn(async move {
+    let startup_handle = tokio::spawn(async move {
         state_for_startup
             .add_system_log(format!(
                 "Loading {} processes from {}",
@@ -475,8 +475,10 @@ pub async fn run_terminal_ui(
     // Cleanup terminal immediately
     cleanup_terminal();
 
-    // A UI that broke off never sent Quit — stop what still runs, so no
-    // process outlives gaffa. After a Quit there is nothing left to stop.
+    // A UI that broke off never sent Quit, and a Quit can come before the last
+    // process started. Let the startup finish, then stop what still runs, so no
+    // process outlives gaffa.
+    let _ = startup_handle.await;
     manager.stop_all().await;
 
     // Ensure output is flushed and terminal is ready for normal output

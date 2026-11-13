@@ -1,5 +1,5 @@
-//! A signal to gaffa stops every process it started. Each child leads its own
-//! process group, so a child gaffa forgets outlives it.
+//! Gaffa leaves no process behind — not on a signal, not when its UI fails.
+//! Each child leads its own process group, so a child gaffa forgets outlives it.
 #![cfg(unix)]
 
 use std::fs::File;
@@ -167,4 +167,42 @@ fn test_sigterm_stops_the_processes_and_exits_130() {
 
     assert!(!survived, "the process outlived gaffa");
     assert_eq!(status.code(), Some(130));
+}
+
+#[test]
+fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
+    let (procfile, pid_path) = procfile_writing_pid("ui_without_terminal");
+    // A session of its own and no terminal: the UI fails while it starts.
+    let mut command = Command::new(env!("CARGO_BIN_EXE_gaffa"));
+    command
+        .args([
+            "run",
+            "--interactive",
+            "--procfile",
+            procfile.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut gaffa = command.spawn().unwrap();
+
+    let status = wait_for_exit(&mut gaffa);
+    // A process gaffa left behind still writes its pid after gaffa is gone.
+    std::thread::sleep(Duration::from_secs(1));
+
+    assert!(!status.success(), "the UI started without a terminal");
+    if let Some(sleeper) = std::fs::read_to_string(&pid_path)
+        .ok()
+        .and_then(|text| text.trim().parse().ok())
+    {
+        assert!(!survived(sleeper), "the process outlived gaffa");
+    }
 }
