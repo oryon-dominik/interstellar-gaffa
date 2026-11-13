@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::fs::OpenOptions;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -46,6 +45,8 @@ pub struct LogEntry {
     pub process: String,
     pub content: String,
     pub is_error: bool,
+    /// gaffa's own message rather than a line of process output.
+    pub system: bool,
 }
 
 pub enum UICommand {
@@ -69,12 +70,28 @@ impl AppState {
     }
 
     pub async fn add_log(&self, process: String, content: String, is_error: bool) {
-        let entry = LogEntry {
+        self.push(LogEntry {
             timestamp: Instant::now(),
             process,
             content,
             is_error,
-        };
+            system: false,
+        })
+        .await;
+    }
+
+    pub async fn add_system_log(&self, content: String) {
+        self.push(LogEntry {
+            timestamp: Instant::now(),
+            process: "gaffa".to_string(),
+            content,
+            is_error: false,
+            system: true,
+        })
+        .await;
+    }
+
+    async fn push(&self, entry: LogEntry) {
         let tx = self.tx.lock().await;
         if let Some(tx) = tx.as_ref() {
             let _ = tx.send(entry);
@@ -84,10 +101,6 @@ impl AppState {
             let mut logs = self.logs.lock().await;
             logs.push_back(entry);
         }
-    }
-
-    pub async fn add_system_log(&self, content: String) {
-        self.add_log("gaffa".to_string(), content, false).await;
     }
 
     pub async fn set_process_status(&self, status_lines: Vec<String>) {
@@ -271,11 +284,10 @@ pub async fn run_terminal_ui(
     state: Arc<AppState>,
     processes_to_start: Vec<String>,
     procfile_path: &str,
-    log_file_path: Option<String>,
 ) -> Result<(), ProcessError> {
     // Create channels
     let (ui_tx, mut ui_rx) = mpsc::unbounded_channel::<UICommand>();
-    let (log_tx, mut log_rx) = mpsc::unbounded_channel::<LogEntry>();
+    let (log_tx, log_rx) = mpsc::unbounded_channel::<LogEntry>();
     let (status_tx, status_rx) = mpsc::unbounded_channel::<Vec<String>>();
     let (shutdown_tx, shutdown_rx) = mpsc::unbounded_channel::<()>();
 
@@ -315,47 +327,9 @@ pub async fn run_terminal_ui(
     // Clone for various tasks
     let manager_for_commands = Arc::clone(&manager);
     let state_for_commands = Arc::clone(&state);
-    let state_for_logs = Arc::clone(&state);
 
-    // Open log file if specified
-    let log_file = if let Some(path) = log_file_path {
-        match OpenOptions::new().create(true).append(true).open(&path) {
-            Ok(file) => Some(Arc::new(Mutex::new(file))),
-            Err(e) => {
-                eprintln!("Warning: Failed to open log file '{path}': {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    // Task to handle logs
-    let log_handle = tokio::spawn(async move {
-        while let Some(entry) = log_rx.recv().await {
-            // Write to log file if available
-            if let Some(log_file) = &log_file {
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                let clean = crate::output::strip_ansi_escapes(&entry.content);
-                let log_line = if entry.is_error {
-                    format!("[{timestamp}] [STDERR] [{}] {clean}\n", entry.process)
-                } else {
-                    format!("[{timestamp}] [{}] {clean}\n", entry.process)
-                };
-
-                let mut file = log_file.lock().await;
-                let _ = file.write_all(log_line.as_bytes());
-                let _ = file.flush();
-            }
-
-            // Push into the shared state the UI loop reads
-            let mut state_logs = state_for_logs.logs.lock().await;
-            state_logs.push_back(entry);
-            if state_logs.len() > MAX_LOG_LINES {
-                state_logs.pop_front();
-            }
-        }
-    });
+    let log_file = manager.config.lock().await.log_file.clone();
+    let log_handle = tokio::spawn(collect_logs(log_rx, Arc::clone(&state.logs), log_file));
 
     // Spawn the UI in a separate task that can block
     let logs_clone = Arc::clone(&state.logs);
@@ -501,6 +475,33 @@ pub async fn run_terminal_ui(
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     ui_result
+}
+
+/// Move log entries into the buffer the UI loop reads, and gaffa's own messages
+/// into the log file — the manager writes process output there itself.
+async fn collect_logs(
+    mut log_rx: mpsc::UnboundedReceiver<LogEntry>,
+    logs: Arc<Mutex<VecDeque<LogEntry>>>,
+    log_file: Option<Arc<Mutex<std::fs::File>>>,
+) {
+    use std::io::Write;
+
+    while let Some(entry) = log_rx.recv().await {
+        if let Some(log_file) = log_file.as_ref().filter(|_| entry.system) {
+            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+            let clean = crate::output::strip_ansi_escapes(&entry.content);
+            let log_line = format!("[{timestamp}] [{}] {clean}\n", entry.process);
+            let mut file = log_file.lock().await;
+            let _ = file.write_all(log_line.as_bytes());
+            let _ = file.flush();
+        }
+
+        let mut logs = logs.lock().await;
+        logs.push_back(entry);
+        if logs.len() > MAX_LOG_LINES {
+            logs.pop_front();
+        }
+    }
 }
 
 /// Restore the terminal: cursor, raw mode, alternate screen, mouse, colours.
@@ -1185,6 +1186,48 @@ mod tests {
         assert!(ui_state.history_up());
         ui_state.insert_char('x');
         assert_eq!(ui_state.input, "sx");
+    }
+
+    #[tokio::test]
+    async fn test_the_log_file_takes_gaffas_messages_and_leaves_process_output_to_the_manager() {
+        let path =
+            std::env::temp_dir().join(format!("gaffa_test_ui_log_{}.log", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+
+        let state = AppState::new();
+        let (tx, rx) = mpsc::unbounded_channel();
+        *state.tx.lock().await = Some(tx);
+        state
+            .add_system_log("Starting process 'web'".to_string())
+            .await;
+        state
+            .add_log("web".to_string(), "listening".to_string(), false)
+            .await;
+        state
+            .add_log(
+                "gaffa".to_string(),
+                "a process named gaffa".to_string(),
+                false,
+            )
+            .await;
+        *state.tx.lock().await = None;
+
+        let logs = Arc::new(Mutex::new(VecDeque::new()));
+        collect_logs(rx, Arc::clone(&logs), Some(Arc::new(Mutex::new(file)))).await;
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(written.lines().count(), 1, "got: {written}");
+        assert!(
+            written.contains("[gaffa] Starting process 'web'"),
+            "got: {written}"
+        );
+        assert_eq!(logs.lock().await.len(), 3);
     }
 
     #[test]

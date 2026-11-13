@@ -10,7 +10,5 @@ pub async fn run_interactive_ui(manager: ProcessManager) -> Result<(), ProcessEr
 
     let processes_to_start = manager.process_names().await;
     let procfile_path = manager.procfile_path().await;
-
-    // No UI log file: the manager writes process output to its own.
-    run_terminal_ui(manager, state, processes_to_start, &procfile_path, None).await
+    run_terminal_ui(manager, state, processes_to_start, &procfile_path).await
 }
