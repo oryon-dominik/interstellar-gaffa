@@ -449,15 +449,7 @@ pub async fn run_terminal_ui(
         }
     });
 
-    // Wait for either UI or command handler to finish; a UI error is the caller's to report
-    let ui_result = tokio::select! {
-        joined = ui_handle => joined.unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic())),
-        _ = command_handle => Ok(()),
-        _ = tokio::signal::ctrl_c() => {
-            // Don't call stop_all here - the UI will handle it via UICommand::Quit
-            Ok(())
-        }
-    };
+    let ui_result = wait_for_ui(ui_handle, command_handle, tokio::signal::ctrl_c()).await;
 
     // Clean up
     status_handle.abort();
@@ -475,6 +467,21 @@ pub async fn run_terminal_ui(
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     ui_result
+}
+
+/// Wait for the UI, the command handler or an interrupt, whichever ends first.
+/// A UI error is the caller's to report; a UI panic goes on unwinding.
+async fn wait_for_ui(
+    ui_handle: tokio::task::JoinHandle<Result<(), ProcessError>>,
+    command_handle: tokio::task::JoinHandle<()>,
+    interrupt: impl std::future::Future<Output = std::io::Result<()>>,
+) -> Result<(), ProcessError> {
+    tokio::select! {
+        joined = ui_handle => joined.unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic())),
+        _ = command_handle => Ok(()),
+        // No stop_all here: the UI stops the processes through UICommand::Quit
+        _ = interrupt => Ok(()),
+    }
 }
 
 /// Move log entries into the buffer the UI loop reads, and gaffa's own messages
@@ -1228,6 +1235,23 @@ mod tests {
             "got: {written}"
         );
         assert_eq!(logs.lock().await.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_ui_task_is_the_result_while_commands_and_interrupt_still_wait() {
+        let ui_handle = tokio::task::spawn_blocking(|| {
+            Err(ProcessError::InputRead(std::io::Error::other(
+                "no terminal",
+            )))
+        });
+        let command_handle = tokio::spawn(std::future::pending::<()>());
+
+        let result = wait_for_ui(ui_handle, command_handle, std::future::pending()).await;
+
+        assert!(
+            matches!(result, Err(ProcessError::InputRead(ref e)) if e.to_string() == "no terminal"),
+            "got: {result:?}"
+        );
     }
 
     #[test]
