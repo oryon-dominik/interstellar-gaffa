@@ -235,10 +235,7 @@ fn spawn_stream_handler(
                 let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
                 let clean = strip_ansi_escapes(&line);
                 let marker = if is_error { "[STDERR] " } else { "" };
-                let log_line = format!(
-                    "[{timestamp}] {marker}[{name}] {clean}
-"
-                );
+                let log_line = format!("[{timestamp}] {marker}[{name}] {clean}\n");
                 let mut file = log_file.lock().await;
                 let _ = file.write_all(log_line.as_bytes());
                 let _ = file.flush();
