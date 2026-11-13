@@ -227,7 +227,6 @@ async fn run_non_interactive(
     log_path_rotated: Option<&std::path::Path>,
 ) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tokio::signal;
 
     let interrupted = Arc::new(AtomicBool::new(false));
 
@@ -249,29 +248,10 @@ async fn run_non_interactive(
     tokio::spawn({
         let interrupted = Arc::clone(&interrupted);
         async move {
-            #[cfg(unix)]
-            {
-                let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-                    .expect("Failed to set up SIGTERM handler");
-                let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-                    .expect("Failed to set up SIGINT handler");
-
-                tokio::select! {
-                    _ = sigterm.recv() => {
-                        eprintln!();
-                    }
-                    _ = sigint.recv() => {
-                        eprintln!();
-                    }
-                }
-            }
-
-            #[cfg(windows)]
-            {
-                signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
-                eprintln!();
-            }
-
+            gaffa::platform::shutdown_signal()
+                .await
+                .expect("Failed to listen for shutdown signals");
+            eprintln!();
             interrupted.store(true, Ordering::SeqCst);
         }
     });

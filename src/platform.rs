@@ -207,6 +207,11 @@ pub mod windows {
             }
         }
     }
+
+    /// Wait for the signal that asks gaffa to shut down: Ctrl+C.
+    pub async fn shutdown_signal() -> std::io::Result<()> {
+        tokio::signal::ctrl_c().await
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -281,6 +286,19 @@ pub mod unix {
 
     /// No-op on Unix — ANSI escape codes are natively supported.
     pub fn ensure_console_mode() {}
+
+    /// Wait for the signal that asks gaffa to shut down: SIGINT or SIGTERM.
+    pub async fn shutdown_signal() -> std::io::Result<()> {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
+        }
+        Ok(())
+    }
 }
 
 // Re-export the appropriate module based on the target OS

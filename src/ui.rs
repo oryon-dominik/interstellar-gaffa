@@ -331,6 +331,22 @@ pub async fn run_terminal_ui(
     let log_file = manager.config.lock().await.log_file.clone();
     let log_handle = tokio::spawn(collect_logs(log_rx, Arc::clone(&state.logs), log_file));
 
+    // A signal quits like Ctrl+C in the UI: the command handler stops every process.
+    let quit_tx = ui_tx.clone();
+    let state_for_signal = Arc::clone(&state);
+    let signal_handle = tokio::spawn(async move {
+        match crate::platform::shutdown_signal().await {
+            Ok(()) => {
+                let _ = quit_tx.send(UICommand::Quit);
+            }
+            Err(e) => {
+                state_for_signal
+                    .add_system_log(format!("Cannot listen for shutdown signals: {e}"))
+                    .await;
+            }
+        }
+    });
+
     // Spawn the UI in a separate task that can block
     let logs_clone = Arc::clone(&state.logs);
     let manager_for_ui = Arc::clone(&manager);
@@ -449,14 +465,19 @@ pub async fn run_terminal_ui(
         }
     });
 
-    let ui_result = wait_for_ui(ui_handle, command_handle, tokio::signal::ctrl_c()).await;
+    let ui_result = wait_for_ui(ui_handle, command_handle).await;
 
     // Clean up
     status_handle.abort();
     log_handle.abort();
+    signal_handle.abort();
 
     // Cleanup terminal immediately
     cleanup_terminal();
+
+    // A UI that broke off never sent Quit — stop what still runs, so no
+    // process outlives gaffa. After a Quit there is nothing left to stop.
+    manager.stop_all().await;
 
     // Ensure output is flushed and terminal is ready for normal output
     use std::io::Write;
@@ -469,18 +490,15 @@ pub async fn run_terminal_ui(
     ui_result
 }
 
-/// Wait for the UI, the command handler or an interrupt, whichever ends first.
+/// Wait for the UI or the command handler, whichever ends first.
 /// A UI error is the caller's to report; a UI panic goes on unwinding.
 async fn wait_for_ui(
     ui_handle: tokio::task::JoinHandle<Result<(), ProcessError>>,
     command_handle: tokio::task::JoinHandle<()>,
-    interrupt: impl std::future::Future<Output = std::io::Result<()>>,
 ) -> Result<(), ProcessError> {
     tokio::select! {
         joined = ui_handle => joined.unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic())),
         _ = command_handle => Ok(()),
-        // No stop_all here: the UI stops the processes through UICommand::Quit
-        _ = interrupt => Ok(()),
     }
 }
 
@@ -1238,7 +1256,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_a_failed_ui_task_is_the_result_while_commands_and_interrupt_still_wait() {
+    async fn test_a_failed_ui_task_is_the_result_while_commands_still_wait() {
         let ui_handle = tokio::task::spawn_blocking(|| {
             Err(ProcessError::InputRead(std::io::Error::other(
                 "no terminal",
@@ -1246,7 +1264,7 @@ mod tests {
         });
         let command_handle = tokio::spawn(std::future::pending::<()>());
 
-        let result = wait_for_ui(ui_handle, command_handle, std::future::pending()).await;
+        let result = wait_for_ui(ui_handle, command_handle).await;
 
         assert!(
             matches!(result, Err(ProcessError::InputRead(ref e)) if e.to_string() == "no terminal"),
