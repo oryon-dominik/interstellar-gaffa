@@ -332,7 +332,7 @@ pub fn strip_ansi_escapes(input: &str) -> String {
 ///
 /// - CSI: ESC [ params (0x30..=0x3F)* intermediates (0x20..=0x2F)* final (0x40..=0x7E)
 /// - OSC: ESC ] ... terminated by BEL or ESC \
-/// - Anything else: ESC and the one byte after it.
+/// - Anything else: ESC and the one character after it.
 fn escape_sequence_end(bytes: &[u8], i: usize) -> Option<usize> {
     if bytes[i] != 0x1b || i + 1 >= bytes.len() {
         return None;
@@ -361,7 +361,7 @@ fn escape_sequence_end(bytes: &[u8], i: usize) -> Option<usize> {
                 end += 1;
             }
         }
-        _ => {}
+        _ => end = next_char_boundary(bytes, i + 1),
     }
     Some(end)
 }
@@ -398,6 +398,17 @@ mod tests {
     fn strips_csi_with_params() {
         let input = "\x1b[38;2;255;0;0mred\x1b[0m";
         assert_eq!(strip_ansi_escapes(input), "red");
+    }
+
+    #[test]
+    fn an_escape_before_a_multibyte_character_drops_the_whole_character() {
+        let input = "a\x1bäb";
+        assert_eq!(strip_ansi_escapes(input), "ab");
+        assert_eq!(super::sanitize_child_line(input), "ab");
+        assert_eq!(
+            super::wrap_ansi_preserving(input, 80),
+            vec![input.to_string()]
+        );
     }
 
     #[test]
