@@ -532,24 +532,29 @@ async fn collect_logs(
 }
 
 /// Restore the terminal: cursor, raw mode, alternate screen, mouse, colours.
+/// Escape sequences go only to a terminal — redirected, they are noise.
 fn cleanup_terminal() {
-    use std::io::{Write, stderr, stdout};
+    use std::io::{IsTerminal, Write, stderr, stdout};
+
+    let terminal = stdout().is_terminal();
 
     // First, ensure we show the cursor
-    let _ = execute!(stdout(), crossterm::cursor::Show);
+    if terminal {
+        let _ = execute!(stdout(), crossterm::cursor::Show);
+    }
 
     // Disable raw mode - this is critical for restoring terminal
     let _ = disable_raw_mode();
 
-    // Leave alternate screen and disable mouse capture
-    let _ = execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture,);
-
-    // Reset all text attributes to default
-    let _ = execute!(
-        stdout(),
-        crossterm::style::ResetColor,
-        crossterm::terminal::Clear(crossterm::terminal::ClearType::FromCursorDown),
-    );
+    if terminal {
+        let _ = execute!(
+            stdout(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+            crossterm::style::ResetColor,
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::FromCursorDown),
+        );
+    }
 
     // Force flush both stdout and stderr
     let _ = stdout().flush();
@@ -560,10 +565,8 @@ fn cleanup_terminal() {
 
     // Platform-specific terminal restoration
     #[cfg(unix)]
-    {
-        // On Unix, we might need to reset terminal attributes
-        use std::process::Command;
-        let _ = Command::new("stty").arg("sane").status();
+    if std::io::stdin().is_terminal() {
+        let _ = std::process::Command::new("stty").arg("sane").status();
     }
 
     #[cfg(windows)]

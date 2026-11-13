@@ -42,8 +42,7 @@ fn reset_terminal() {
 
     // Platform-specific reset
     #[cfg(unix)]
-    {
-        // Reset terminal to sane state
+    if std::io::stdin().is_terminal() {
         let _ = std::process::Command::new("stty").arg("sane").status();
     }
 }

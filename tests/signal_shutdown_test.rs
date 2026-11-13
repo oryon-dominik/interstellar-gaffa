@@ -169,10 +169,9 @@ fn test_sigterm_stops_the_processes_and_exits_130() {
     assert_eq!(status.code(), Some(130));
 }
 
-#[test]
-fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
-    let (procfile, pid_path) = procfile_writing_pid("ui_without_terminal");
-    // A session of its own and no terminal: the UI fails while it starts.
+/// Gaffa's terminal UI in a session of its own and without a terminal, so the UI
+/// fails while it starts; its output is captured.
+fn spawn_interactive_without_terminal(procfile: &Path) -> Child {
     let mut command = Command::new(env!("CARGO_BIN_EXE_gaffa"));
     command
         .args([
@@ -182,8 +181,8 @@ fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
             procfile.to_str().unwrap(),
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     unsafe {
         command.pre_exec(|| {
             if libc::setsid() == -1 {
@@ -192,7 +191,13 @@ fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
             Ok(())
         });
     }
-    let mut gaffa = command.spawn().unwrap();
+    command.spawn().unwrap()
+}
+
+#[test]
+fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
+    let (procfile, pid_path) = procfile_writing_pid("ui_without_terminal");
+    let mut gaffa = spawn_interactive_without_terminal(&procfile);
 
     let status = wait_for_exit(&mut gaffa);
     // A process gaffa left behind still writes its pid after gaffa is gone.
@@ -205,4 +210,21 @@ fn test_a_terminal_ui_that_cannot_start_leaves_no_process_behind() {
     {
         assert!(!survived(sleeper), "the process outlived gaffa");
     }
+}
+
+#[test]
+fn test_a_terminal_ui_without_terminal_writes_no_terminal_controls() {
+    let (procfile, _) = procfile_writing_pid("ui_without_terminal_output");
+
+    let output = spawn_interactive_without_terminal(&procfile)
+        .wait_with_output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stdout.contains('\x1b'),
+        "escape sequences on stdout: {stdout:?}"
+    );
+    assert!(!stderr.contains("stty"), "stty complained: {stderr}");
 }
