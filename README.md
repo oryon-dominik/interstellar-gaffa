@@ -1,5 +1,9 @@
 # Gaffa
 
+[![crates.io](https://img.shields.io/crates/v/gaffa.svg)](https://crates.io/crates/gaffa)
+[![Test](https://github.com/oryon-dominik/interstellar-gaffa/actions/workflows/test.yml/badge.svg?branch=trunk)](https://github.com/oryon-dominik/interstellar-gaffa/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/crates/l/gaffa.svg)](LICENSE)
+
 A cross-platform process manager for [procfile](https://procfile.dev/) based applications in a single terminal.
 Has an interactive terminal UI.
 
