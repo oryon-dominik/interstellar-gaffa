@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gaffa::ui::{AppState, LogEntry};
-use gaffa::{ProcessManager, ProcessStatus};
+use gaffa::{LifecycleOptions, ProcessManager, ProcessStatus};
 use tokio::sync::Mutex;
 
 // ---------------------------------------------------------------------------
@@ -822,6 +822,42 @@ async fn test_log_file_write() {
     );
 
     // Cleanup
+    cleanup_procfile(&path);
+    let _ = std::fs::remove_file(&log_path);
+}
+
+#[tokio::test]
+async fn test_log_file_write_with_ui() {
+    // `--interactive --log-file` once left the file empty: with a UI attached,
+    // output went to the UI only.
+    let manager = Arc::new(ProcessManager::new());
+    let content = format!("logger: {}", echo_command());
+    let path = create_procfile(&content);
+    let log_path = scratch(&format!("test_stability_ui_log_{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&log_path);
+
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .unwrap();
+    manager.set_log_file(Arc::new(Mutex::new(log_file))).await;
+
+    manager.load_procfile(&path).await.unwrap();
+    let state = Arc::new(AppState::new());
+    manager
+        .start_process_with_opts("logger", &LifecycleOptions::with_ui(state))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let log_content = std::fs::read_to_string(&log_path).unwrap_or_default();
+    assert!(
+        log_content.contains("[logger] hello from gaffa test"),
+        "log file should contain process output, got: {log_content}"
+    );
+
     cleanup_procfile(&path);
     let _ = std::fs::remove_file(&log_path);
 }

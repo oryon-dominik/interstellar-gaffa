@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::sync::Arc;
 
 use crate::paint::{Color, Paint};
@@ -268,18 +269,17 @@ pub fn spawn_output_handlers(
                 );
 
                 // Force immediate output to terminal
-                use std::io::{Write, stdout};
-                let _ = stdout().flush();
+                let _ = std::io::stdout().flush();
+            }
 
-                // Write to log file if available
-                if let Some(log_file) = &log_file_stdout {
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                    let clean = strip_ansi_escapes(&line);
-                    let log_line = format!("[{timestamp}] [{stdout_name}] {clean}\n");
-                    let mut file = log_file.lock().await;
-                    let _ = file.write_all(log_line.as_bytes());
-                    let _ = file.flush();
-                }
+            // The log file takes every line, with or without a UI.
+            if let Some(log_file) = &log_file_stdout {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let clean = strip_ansi_escapes(&line);
+                let log_line = format!("[{timestamp}] [{stdout_name}] {clean}\n");
+                let mut file = log_file.lock().await;
+                let _ = file.write_all(log_line.as_bytes());
+                let _ = file.flush();
             }
         }
     });
@@ -316,18 +316,17 @@ pub fn spawn_output_handlers(
                 );
 
                 // Force immediate output to terminal
-                use std::io::{Write, stdout};
-                let _ = stdout().flush();
+                let _ = std::io::stdout().flush();
+            }
 
-                // Write to log file if available
-                if let Some(log_file) = &log_file {
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                    let clean = strip_ansi_escapes(&line);
-                    let log_line = format!("[{timestamp}] [STDERR] [{stderr_name}] {clean}\n");
-                    let mut file = log_file.lock().await;
-                    let _ = file.write_all(log_line.as_bytes());
-                    let _ = file.flush();
-                }
+            // The log file takes every line, with or without a UI.
+            if let Some(log_file) = &log_file {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let clean = strip_ansi_escapes(&line);
+                let log_line = format!("[{timestamp}] [STDERR] [{stderr_name}] {clean}\n");
+                let mut file = log_file.lock().await;
+                let _ = file.write_all(log_line.as_bytes());
+                let _ = file.flush();
             }
         }
     });
