@@ -7,7 +7,7 @@ description = "Cross-platform process manager for Procfile-based process-collect
 license = "MIT"
 repository = "https://github.com/oryon-dominik/interstellar-gaffa"
 readme = "README.md"
-keywords = ["procfile", "process-manager", "foreman", "overmind", "honcho"]
+keywords = ["procfile", "process-manager", "tui", "windows"]
 categories = [
     "command-line-utilities",
     "development-tools"
