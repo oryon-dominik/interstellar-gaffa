@@ -1,5 +1,6 @@
-//! Gaffa leaves no process behind — not on a signal, not when its UI fails.
-//! Each child leads its own process group, so a child gaffa forgets outlives it.
+//! Gaffa leaves nothing behind — no process on a signal or a failed UI, no
+//! terminal controls in redirected output. Each child leads its own process
+//! group, so a child gaffa forgets outlives it.
 #![cfg(unix)]
 
 use std::fs::File;
