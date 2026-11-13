@@ -3,7 +3,7 @@
 # finds them without compiling and without binstall metadata in Cargo.toml.
 #
 # The version workflow calls it after tagging; a tag it did not cut is built by hand:
-# gh workflow run release.yml --field tag=v0.5.1
+# gh workflow run release.yml --field tag=2026.9.0
 name: Release
 
 on:
