@@ -20,7 +20,6 @@ path = "src/bin/gaffa.rs"
 [dependencies]
 tokio = { version = "1.47.0", features = ["full"] }
 regex = "1"
-shell-words = "1.1.0"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.12"
 ratatui = "0.29"
