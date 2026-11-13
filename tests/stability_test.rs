@@ -134,7 +134,7 @@ async fn test_natural_exit_removes_from_children() {
     // Wait for natural exit
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Child should be removed by monitor task
+    // The actor untracks the child once it exits
     let children_count = manager.children_count().await;
     assert_eq!(
         children_count, 0,
@@ -155,12 +155,12 @@ async fn test_natural_exit_handle_cleanup() {
     manager.load_procfile(&path).await.unwrap();
     manager.start_process("quick").await.unwrap();
 
-    // After start: should have 1 monitor handle and 2 output handles
+    // After start: 1 child and 2 output handles
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(
-        manager.monitor_handle_count().await,
+        manager.children_count().await,
         1,
-        "should have 1 monitor handle after start"
+        "should have 1 child after start"
     );
     assert_eq!(
         manager.output_handle_count().await,
@@ -172,12 +172,12 @@ async fn test_natural_exit_handle_cleanup() {
     tokio::time::sleep(Duration::from_secs(6)).await;
 
     // FIXED [HANDLE_LEAK]: handles are now cleaned up on natural exit
-    let monitor_count = manager.monitor_handle_count().await;
+    let children_count = manager.children_count().await;
     let output_count = manager.output_handle_count().await;
 
     assert_eq!(
-        monitor_count, 0,
-        "FIXED [HANDLE_LEAK]: monitor handle should be cleaned up after natural exit"
+        children_count, 0,
+        "FIXED [HANDLE_LEAK]: the child should be untracked after natural exit"
     );
     assert_eq!(
         output_count, 0,
@@ -202,19 +202,19 @@ async fn test_restart_cleans_up_handles() {
     manager.start_process("svc").await.unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Initial state: 1 monitor, 2 output handles
-    assert_eq!(manager.monitor_handle_count().await, 1);
+    // Initial state: 1 child, 2 output handles
+    assert_eq!(manager.children_count().await, 1);
     assert_eq!(manager.output_handle_count().await, 2);
 
     // Restart the process
     manager.restart_process("svc").await.unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // After restart: should still be exactly 1 monitor and 2 output handles
+    // After restart: still exactly 1 child and 2 output handles
     assert_eq!(
-        manager.monitor_handle_count().await,
+        manager.children_count().await,
         1,
-        "after restart, should have exactly 1 monitor handle (not accumulated)"
+        "after restart, should have exactly 1 child (not accumulated)"
     );
     assert_eq!(
         manager.output_handle_count().await,
@@ -339,7 +339,6 @@ async fn test_stop_process_cleans_up_handles() {
 
     // Before stop
     assert_eq!(manager.children_count().await, 1);
-    assert_eq!(manager.monitor_handle_count().await, 1);
     assert_eq!(manager.output_handle_count().await, 2);
 
     // Stop
@@ -350,11 +349,6 @@ async fn test_stop_process_cleans_up_handles() {
         manager.children_count().await,
         0,
         "children should be empty after stop"
-    );
-    assert_eq!(
-        manager.monitor_handle_count().await,
-        0,
-        "monitor handles should be cleaned after stop"
     );
     assert_eq!(
         manager.output_handle_count().await,
@@ -801,12 +795,7 @@ async fn test_rapid_start_stop_cycles() {
         );
     }
 
-    // After all stop cycles, handles should be cleaned up
-    assert_eq!(
-        manager.monitor_handle_count().await,
-        0,
-        "after all stop cycles, monitor handles should be 0"
-    );
+    // After all stop cycles, the output handles are gone too
     assert_eq!(
         manager.output_handle_count().await,
         0,

@@ -896,12 +896,6 @@ impl ProcessManager {
         config.max_name_length.max(5) // Ensure at least 5 for "gaffa"
     }
 
-    /// Get the number of live process actors (for diagnostics/testing).
-    /// Each running child is owned by exactly one actor task.
-    pub async fn monitor_handle_count(&self) -> usize {
-        self.runtime.lock().await.actors.len()
-    }
-
     /// Get the number of active output handles (for diagnostics/testing).
     pub async fn output_handle_count(&self) -> usize {
         self.runtime
@@ -914,6 +908,7 @@ impl ProcessManager {
     }
 
     /// Get the number of active child processes (for diagnostics/testing).
+    /// Each running child is owned by exactly one actor task.
     pub async fn children_count(&self) -> usize {
         self.runtime.lock().await.actors.len()
     }
