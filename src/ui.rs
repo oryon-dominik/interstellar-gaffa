@@ -697,7 +697,9 @@ fn run_app<B: Backend>(
                         }
                         KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             // Paste from clipboard
-                            if let Ok(text) = cli_clipboard::get_contents() {
+                            if let Ok(text) =
+                                arboard::Clipboard::new().and_then(|mut board| board.get_text())
+                            {
                                 ui_state.insert_str(&text);
                                 needs_redraw = true;
                             }

@@ -25,7 +25,7 @@ clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.12"
 ratatui = "0.29"
 crossterm = "0.29"
-cli-clipboard = "0.4"
+arboard = { version = "3.7", default-features = false, features = ["wayland-data-control"] }
 chrono = "0.4"
 unicode-width = "0.2"
 
