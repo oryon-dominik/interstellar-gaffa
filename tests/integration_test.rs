@@ -49,40 +49,6 @@ fn test_gaffa_run_nonexistent_procfile() {
 }
 
 #[test]
-fn test_gaffa_with_test_procfile() {
-    // Create a simple test Procfile
-    let procfile_content = if cfg!(windows) {
-        "echo: cmd /c echo Hello from test"
-    } else {
-        "echo: echo 'Hello from test'"
-    };
-    let procfile = scratch("test_integration.procfile");
-    std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
-
-    // Start gaffa with the test procfile in a separate thread
-    let spawned = procfile.clone();
-    let handle = thread::spawn(move || {
-        let mut child = Command::new("cargo")
-            .args(["run", "--", "run", "-p"])
-            .arg(&spawned)
-            .spawn()
-            .expect("Failed to start gaffa");
-
-        // Let it run for a bit
-        thread::sleep(Duration::from_secs(2));
-
-        // Kill the process
-        let _ = child.kill();
-        child.wait().expect("Failed to wait for child");
-    });
-
-    handle.join().expect("Thread panicked");
-
-    // Cleanup
-    let _ = std::fs::remove_file(&procfile);
-}
-
-#[test]
 fn test_gaffa_log_file() {
     // Create a simple test Procfile
     let procfile_content = if cfg!(windows) {
@@ -224,25 +190,19 @@ fn test_gaffa_specific_processes() {
     let procfile = scratch("test_specific.procfile");
     std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
-    // Start gaffa with only specific processes
-    let spawned = procfile.clone();
-    let handle = thread::spawn(move || {
-        let mut child = Command::new("cargo")
-            .args(["run", "--", "run", "-p"])
-            .arg(&spawned)
-            .args(["web", "worker"])
-            .spawn()
-            .expect("Failed to start gaffa");
+    // Run only web and worker; the echo lines exit, so gaffa does too.
+    let output = Command::new("cargo")
+        .args(["run", "--", "run", "-p"])
+        .arg(&procfile)
+        .args(["web", "worker"])
+        .output()
+        .expect("Failed to run gaffa");
 
-        // Let it run for a bit
-        thread::sleep(Duration::from_secs(2));
-
-        // Kill the process
-        let _ = child.kill();
-        child.wait().expect("Failed to wait for child");
-    });
-
-    handle.join().expect("Thread panicked");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Web server"), "{stdout}");
+    assert!(stdout.contains("Worker process"), "{stdout}");
+    assert!(!stdout.contains("Scheduler"), "{stdout}");
 
     // Cleanup
     let _ = std::fs::remove_file(&procfile);
