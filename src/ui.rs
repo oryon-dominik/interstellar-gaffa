@@ -633,12 +633,7 @@ fn run_ui_loop(
     shutdown_rx: mpsc::UnboundedReceiver<()>,
     manager: Arc<ProcessManager>,
 ) -> Result<(), ProcessError> {
-    // Set panic handler to cleanup terminal
-    let original_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        cleanup_terminal();
-        original_panic(info);
-    }));
+    let original_hook = install_cleanup_panic_hook();
 
     // Setup terminal
     let setup_result = (|| -> Result<(), ProcessError> {
@@ -651,6 +646,7 @@ fn run_ui_loop(
 
     if let Err(e) = setup_result {
         cleanup_terminal();
+        restore_panic_hook(original_hook);
         return Err(e);
     }
 
@@ -660,6 +656,7 @@ fn run_ui_loop(
         Ok(t) => t,
         Err(e) => {
             cleanup_terminal();
+            restore_panic_hook(original_hook);
             return Err(ProcessError::InputRead(e));
         }
     };
@@ -679,11 +676,27 @@ fn run_ui_loop(
 
     // Always restore terminal, even on error
     cleanup_terminal();
-
-    // Restore original panic handler
-    let _ = std::panic::take_hook();
+    restore_panic_hook(original_hook);
 
     res
+}
+
+type PanicHook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send>;
+
+/// Put a terminal cleanup in front of the current panic hook, and hand back that hook.
+fn install_cleanup_panic_hook() -> Arc<PanicHook> {
+    let original: Arc<PanicHook> = Arc::new(std::panic::take_hook());
+    let chained = Arc::clone(&original);
+    std::panic::set_hook(Box::new(move |info| {
+        cleanup_terminal();
+        chained(info);
+    }));
+    original
+}
+
+/// Reinstate the panic hook that was in place before `install_cleanup_panic_hook`.
+fn restore_panic_hook(original: Arc<PanicHook>) {
+    std::panic::set_hook(Box::new(move |info| original(info)));
 }
 
 #[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
@@ -1226,6 +1239,21 @@ mod tests {
         assert!(ui_state.history_up());
         ui_state.insert_char('x');
         assert_eq!(ui_state.input, "sx");
+    }
+
+    #[test]
+    fn test_restoring_the_panic_hook_reinstates_the_one_before() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static BEFORE_RAN: AtomicBool = AtomicBool::new(false);
+        std::panic::set_hook(Box::new(|_| BEFORE_RAN.store(true, Ordering::SeqCst)));
+
+        let original = install_cleanup_panic_hook();
+        restore_panic_hook(original);
+        let _ = std::panic::catch_unwind(|| panic!("probe"));
+        drop(std::panic::take_hook());
+
+        assert!(BEFORE_RAN.load(Ordering::SeqCst));
     }
 
     #[test]
