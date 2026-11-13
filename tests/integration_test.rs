@@ -247,3 +247,24 @@ fn test_gaffa_specific_processes() {
     // Cleanup
     let _ = std::fs::remove_file(&procfile);
 }
+
+#[test]
+fn test_a_start_failure_is_reported_once() {
+    let procfile = scratch("test_start_failure.procfile");
+    std::fs::write(&procfile, "web: echo never").expect("Failed to write test procfile");
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "run", "--shell", "gaffa-no-such-shell", "-p"])
+        .arg(&procfile)
+        .output()
+        .expect("Failed to run gaffa");
+    let _ = std::fs::remove_file(&procfile);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("Failed to spawn process 'web'").count(),
+        1,
+        "the error should be printed once, got: {stderr}"
+    );
+}

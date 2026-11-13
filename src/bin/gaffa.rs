@@ -264,9 +264,6 @@ async fn run_non_interactive(
 
     let interrupted = Arc::new(AtomicBool::new(false));
 
-    // Get max name length for proper alignment
-    let max_name_len = manager.get_max_name_length().await;
-
     // Collect the set of processes we're about to start so we can announce
     // them in a single compact banner instead of N identical "Starting" lines.
     let startup_names: Vec<String> = match &processes_to_run {
@@ -322,19 +319,9 @@ async fn run_non_interactive(
     use std::io::Write;
     let _ = std::io::stdout().flush();
     for name in &startup_names {
-        if let Err(e) = manager
+        manager
             .start_process_with_opts(name, &LifecycleOptions::quiet())
-            .await
-        {
-            eprintln!(
-                "{}",
-                output::format_error_message(
-                    &format!("Failed to start process '{}': {}", name, e),
-                    max_name_len
-                )
-            );
-            return Err(e);
-        }
+            .await?;
     }
 
     // Wait for all processes to finish or for interrupt
@@ -729,9 +716,7 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
                 show_termination_summary(&manager, false).await;
             }
             Err(e) => {
-                // In case of error, we should reset the terminal
                 reset_terminal();
-                eprintln!("{}", output::format_error_message(&e.to_string(), 0));
                 return Err(e);
             }
         }
@@ -749,9 +734,7 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
                 reset_terminal_simple();
             }
             Err(e) => {
-                // Reset terminal on error
                 reset_terminal();
-                eprintln!("{}", output::format_error_message(&e.to_string(), 0));
                 return Err(e);
             }
         }
