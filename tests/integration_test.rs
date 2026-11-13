@@ -11,8 +11,8 @@ fn scratch(name: &str) -> PathBuf {
 
 #[test]
 fn test_gaffa_help() {
-    let output = Command::new("cargo")
-        .args(["run", "--", "--help"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["--help"])
         .output()
         .expect("Failed to execute command");
 
@@ -24,8 +24,7 @@ fn test_gaffa_help() {
 
 #[test]
 fn test_gaffa_no_args() {
-    let output = Command::new("cargo")
-        .args(["run"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
         .output()
         .expect("Failed to execute command");
 
@@ -38,8 +37,8 @@ fn test_gaffa_no_args() {
 
 #[test]
 fn test_gaffa_run_nonexistent_procfile() {
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "-p", "nonexistent.procfile"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "-p", "nonexistent.procfile"])
         .output()
         .expect("Failed to execute command");
 
@@ -50,8 +49,8 @@ fn test_gaffa_run_nonexistent_procfile() {
 
 /// Run `gaffa run` on a valid Procfile with extra arguments and return its stderr.
 fn run_failing(extra: &[&str]) -> String {
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "-p", "tests/fixtures/simple.procfile"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "-p", "tests/fixtures/simple.procfile"])
         .args(extra)
         .output()
         .expect("Failed to execute command");
@@ -104,8 +103,8 @@ fn test_gaffa_log_file() {
         let _ = std::fs::remove_file(p);
     }
 
-    let mut child = Command::new("cargo")
-        .args(["run", "--", "run", "-p"])
+    let mut child = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "-p"])
         .arg(&procfile)
         .arg("--log-file")
         .arg(&log_file)
@@ -159,8 +158,8 @@ fn test_redirected_stdout_carries_no_escape_sequence() {
     let procfile = scratch("test_redirect.procfile");
     std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "-p"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "-p"])
         .arg(&procfile)
         .output()
         .expect("Failed to run gaffa");
@@ -190,8 +189,8 @@ fn test_cmd_runs_a_line_that_starts_with_a_quoted_program() {
     )
     .expect("Failed to write test procfile");
 
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "--shell", "cmd", "-p"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "--shell", "cmd", "-p"])
         .arg(&procfile)
         .output()
         .expect("Failed to run gaffa");
@@ -231,8 +230,8 @@ fn test_gaffa_specific_processes() {
     std::fs::write(&procfile, procfile_content).expect("Failed to write test procfile");
 
     // Run only web and worker; the echo lines exit, so gaffa does too.
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "-p"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "-p"])
         .arg(&procfile)
         .args(["web", "worker"])
         .output()
@@ -253,8 +252,8 @@ fn test_a_start_failure_is_reported_once() {
     let procfile = scratch("test_start_failure.procfile");
     std::fs::write(&procfile, "web: echo never").expect("Failed to write test procfile");
 
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "--shell", "gaffa-no-such-shell", "-p"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "--shell", "gaffa-no-such-shell", "-p"])
         .arg(&procfile)
         .output()
         .expect("Failed to run gaffa");

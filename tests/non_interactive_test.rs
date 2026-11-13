@@ -2,8 +2,8 @@ use std::process::Command;
 
 #[test]
 fn test_help_includes_interactive() {
-    let output = Command::new("cargo")
-        .args(["run", "--", "run", "--help"])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "--help"])
         .output()
         .expect("Failed to execute command");
 

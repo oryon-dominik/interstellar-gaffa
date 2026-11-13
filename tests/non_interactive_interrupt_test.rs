@@ -12,21 +12,13 @@ test1: while ($true) { Write-Host 'Process 1'; Start-Sleep -Seconds 1 }
 test2: while ($true) { Write-Host 'Process 2'; Start-Sleep -Seconds 1 }
 "#;
 
-    let test_dir = std::env::temp_dir().join("gaffa_test_ctrl_c");
+    let test_dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("gaffa_test_ctrl_c");
     std::fs::create_dir_all(&test_dir).unwrap();
     let procfile_path = test_dir.join("Procfile");
     std::fs::write(&procfile_path, procfile_content).unwrap();
 
-    // Build the binary
-    let output = Command::new("cargo")
-        .args(["build", "--release"])
-        .output()
-        .expect("Failed to build");
-
-    assert!(output.status.success(), "Build failed");
-
     // Run gaffa in non-interactive mode
-    let mut child = Command::new("target/release/gaffa")
+    let mut child = Command::new(env!("CARGO_BIN_EXE_gaffa"))
         .args([
             "run",
             "--shell",
@@ -77,20 +69,14 @@ test2: echo "Test 2 done"
 "#
     };
 
-    let test_dir = std::env::temp_dir().join("gaffa_test_normal_exit");
+    let test_dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("gaffa_test_normal_exit");
     std::fs::create_dir_all(&test_dir).unwrap();
     let procfile_path = test_dir.join("Procfile");
     std::fs::write(&procfile_path, procfile_content).unwrap();
 
     // Run gaffa
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "run",
-            "--procfile",
-            procfile_path.to_str().unwrap(),
-        ])
+    let output = Command::new(env!("CARGO_BIN_EXE_gaffa"))
+        .args(["run", "--procfile", procfile_path.to_str().unwrap()])
         .output()
         .expect("Failed to run gaffa");
 
