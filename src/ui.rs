@@ -969,7 +969,7 @@ fn render_logs(f: &mut Frame, area: Rect, ui_state: &mut UIState) {
         .map(|entry| {
             use ratatui::text::{Line, Span};
 
-            let process_color = if entry.process == "gaffa" {
+            let process_color = if entry.system {
                 Color::Magenta
             } else {
                 process_colors
@@ -979,7 +979,7 @@ fn render_logs(f: &mut Frame, area: Rect, ui_state: &mut UIState) {
             };
 
             // Create a line with colored process name and appropriately colored content
-            let line = if entry.process == "gaffa" {
+            let line = if entry.system {
                 // For gaffa messages, color the entire line magenta
                 Line::from(vec![Span::styled(
                     format!("{:>12} | {}", entry.process, entry.content),
