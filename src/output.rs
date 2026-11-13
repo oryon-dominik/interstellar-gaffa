@@ -38,46 +38,13 @@ fn sanitize_child_line(input: &str) -> String {
     let mut i = 0;
 
     while i < bytes.len() {
-        if bytes[i] == 0x1b && i + 1 < bytes.len() {
-            match bytes[i + 1] {
-                b'[' => {
-                    let start = i;
-                    i += 2;
-                    while i < bytes.len() && (0x30..=0x3f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    while i < bytes.len() && (0x20..=0x2f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    if i < bytes.len() && (0x40..=0x7e).contains(&bytes[i]) {
-                        let final_byte = bytes[i];
-                        i += 1;
-                        if final_byte == b'm' {
-                            out.push_str(&logical[start..i]);
-                        }
-                    }
-                    continue;
-                }
-                b']' => {
-                    i += 2;
-                    while i < bytes.len() {
-                        if bytes[i] == 0x07 {
-                            i += 1;
-                            break;
-                        }
-                        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-                            i += 2;
-                            break;
-                        }
-                        i += 1;
-                    }
-                    continue;
-                }
-                _ => {
-                    i += 2;
-                    continue;
-                }
+        if let Some(end) = escape_sequence_end(bytes, i) {
+            // Keep SGR colours (CSI ending in `m`), drop every other sequence.
+            if bytes[i + 1] == b'[' && bytes[end - 1] == b'm' {
+                out.push_str(&logical[i..end]);
             }
+            i = end;
+            continue;
         }
 
         let b = bytes[i];
@@ -111,40 +78,9 @@ fn wrap_ansi_preserving(input: &str, content_w: usize) -> Vec<String> {
 
     while i < bytes.len() {
         // ANSI escape: copy the whole sequence, 0 display width.
-        if bytes[i] == 0x1b && i + 1 < bytes.len() {
-            let start = i;
-            match bytes[i + 1] {
-                b'[' => {
-                    i += 2;
-                    while i < bytes.len() && (0x30..=0x3f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    while i < bytes.len() && (0x20..=0x2f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    if i < bytes.len() && (0x40..=0x7e).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                }
-                b']' => {
-                    i += 2;
-                    while i < bytes.len() {
-                        if bytes[i] == 0x07 {
-                            i += 1;
-                            break;
-                        }
-                        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-                            i += 2;
-                            break;
-                        }
-                        i += 1;
-                    }
-                }
-                _ => {
-                    i += 2;
-                }
-            }
-            current.push_str(&input[start..i]);
+        if let Some(end) = escape_sequence_end(bytes, i) {
+            current.push_str(&input[i..end]);
+            i = end;
             continue;
         }
 
@@ -376,48 +312,9 @@ pub fn strip_ansi_escapes(input: &str) -> String {
     let mut i = 0;
 
     while i < bytes.len() {
-        // ESC (0x1B) begins a control sequence.
-        if bytes[i] == 0x1b && i + 1 < bytes.len() {
-            match bytes[i + 1] {
-                // CSI: ESC [ params* intermediates* final
-                // params:        0x30..=0x3F  (digits, ';', '?', etc.)
-                // intermediates: 0x20..=0x2F
-                // final:         0x40..=0x7E
-                b'[' => {
-                    i += 2;
-                    while i < bytes.len() && (0x30..=0x3f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    while i < bytes.len() && (0x20..=0x2f).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    if i < bytes.len() && (0x40..=0x7e).contains(&bytes[i]) {
-                        i += 1;
-                    }
-                    continue;
-                }
-                // OSC: ESC ] ... (BEL | ESC \)
-                b']' => {
-                    i += 2;
-                    while i < bytes.len() {
-                        if bytes[i] == 0x07 {
-                            i += 1;
-                            break;
-                        }
-                        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-                            i += 2;
-                            break;
-                        }
-                        i += 1;
-                    }
-                    continue;
-                }
-                // Single-char escapes (RIS, NEL, etc.) — drop ESC + one byte.
-                _ => {
-                    i += 2;
-                    continue;
-                }
-            }
+        if let Some(end) = escape_sequence_end(bytes, i) {
+            i = end;
+            continue;
         }
 
         // Non-escape byte: copy as-is. `input` is valid UTF-8 so we can push
@@ -428,6 +325,45 @@ pub fn strip_ansi_escapes(input: &str) -> String {
     }
 
     out
+}
+
+/// The end of the escape sequence starting at `i`, or `None` when no ESC
+/// with a following byte starts there.
+///
+/// - CSI: ESC [ params (0x30..=0x3F)* intermediates (0x20..=0x2F)* final (0x40..=0x7E)
+/// - OSC: ESC ] ... terminated by BEL or ESC \
+/// - Anything else: ESC and the one byte after it.
+fn escape_sequence_end(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != 0x1b || i + 1 >= bytes.len() {
+        return None;
+    }
+    let mut end = i + 2;
+    match bytes[i + 1] {
+        b'[' => {
+            while end < bytes.len() && (0x30..=0x3f).contains(&bytes[end]) {
+                end += 1;
+            }
+            while end < bytes.len() && (0x20..=0x2f).contains(&bytes[end]) {
+                end += 1;
+            }
+            if end < bytes.len() && (0x40..=0x7e).contains(&bytes[end]) {
+                end += 1;
+            }
+        }
+        b']' => {
+            while end < bytes.len() {
+                if bytes[end] == 0x07 {
+                    return Some(end + 1);
+                }
+                if bytes[end] == 0x1b && end + 1 < bytes.len() && bytes[end + 1] == b'\\' {
+                    return Some(end + 2);
+                }
+                end += 1;
+            }
+        }
+        _ => {}
+    }
+    Some(end)
 }
 
 fn next_char_boundary(bytes: &[u8], i: usize) -> usize {
