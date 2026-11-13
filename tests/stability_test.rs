@@ -768,6 +768,54 @@ async fn test_log_file_write_with_ui() {
     let _ = std::fs::remove_file(&log_path);
 }
 
+#[tokio::test]
+async fn test_stderr_reaches_the_ui_as_an_error_and_the_log_file_marked() {
+    let manager = Arc::new(ProcessManager::new());
+    let command = if cfg!(windows) {
+        r#"cmd /c "echo oops from gaffa test 1>&2""#
+    } else {
+        "echo oops from gaffa test >&2"
+    };
+    let path = create_procfile(&format!("grumbler: {command}"));
+    let log_path = scratch(&format!(
+        "test_stability_stderr_log_{}.txt",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&log_path);
+
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .unwrap();
+    manager.set_log_file(Arc::new(Mutex::new(log_file))).await;
+
+    manager.load_procfile(&path).await.unwrap();
+    let state = Arc::new(AppState::new());
+    manager
+        .start_process_with_opts("grumbler", &LifecycleOptions::with_ui(Arc::clone(&state)))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let log_content = std::fs::read_to_string(&log_path).unwrap_or_default();
+    assert!(
+        log_content.contains("[STDERR] [grumbler] oops from gaffa test"),
+        "log file should mark stderr, got: {log_content}"
+    );
+    let logs = state.logs.lock().await;
+    assert!(
+        logs.iter().any(|entry| entry.process == "grumbler"
+            && entry.is_error
+            && entry.content.contains("oops")),
+        "the UI should take the stderr line as an error"
+    );
+
+    cleanup_procfile(&path);
+    let _ = std::fs::remove_file(&log_path);
+}
+
 // ===========================================================================
 // 8. Stress tests
 // ===========================================================================

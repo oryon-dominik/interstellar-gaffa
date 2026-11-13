@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::paint::{Color, Paint};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, BufReader},
     sync::Mutex,
 };
 use unicode_width::UnicodeWidthChar;
@@ -168,14 +168,39 @@ pub fn spawn_output_handlers(
     max_name_len: usize,
     process_color: Color,
 ) -> (tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>) {
-    let name_str = name.to_string();
-    let stdout_reader = BufReader::new(stdout);
-    let app_state_stdout = app_state.clone();
-    let log_file_stdout = log_file.clone();
+    let stdout_handle = spawn_stream_handler(
+        name.to_string(),
+        stdout,
+        false,
+        app_state.clone(),
+        log_file.clone(),
+        max_name_len,
+        process_color,
+    );
+    let stderr_handle = spawn_stream_handler(
+        name.to_string(),
+        stderr,
+        true,
+        app_state,
+        log_file,
+        max_name_len,
+        process_color,
+    );
+    (stdout_handle, stderr_handle)
+}
 
-    let stdout_name = name_str.clone();
-    let stdout_handle = tokio::spawn(async move {
-        let mut lines = stdout_reader.lines();
+/// Read one output stream line by line into the UI or the terminal, and into the log file.
+fn spawn_stream_handler(
+    name: String,
+    stream: impl AsyncRead + Unpin + Send + 'static,
+    is_error: bool,
+    app_state: Option<Arc<AppState>>,
+    log_file: Option<Arc<Mutex<std::fs::File>>>,
+    max_name_len: usize,
+    process_color: Color,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stream).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim_end().to_string();
 
@@ -184,72 +209,22 @@ pub fn spawn_output_handlers(
                 continue;
             }
 
-            if let Some(state) = &app_state_stdout {
-                state
-                    .add_log(stdout_name.clone(), line.clone(), false)
-                    .await;
+            if let Some(state) = &app_state {
+                state.add_log(name.clone(), line.clone(), is_error).await;
             } else {
                 // Re-enable VTP before printing — Ctrl+C on Windows can
                 // corrupt the console mode between lines of output.
                 crate::platform::ensure_console_mode();
 
-                // Stdout: separator tinted to the process colour so each
-                // stream reads as a single visual column. Wraps at terminal
-                // width with continuation rows aligned under the content.
-                print_prefixed_wrapped(
-                    &stdout_name,
-                    max_name_len,
-                    process_color,
-                    process_color,
-                    &line,
-                );
-
-                // Force immediate output to terminal
-                let _ = std::io::stdout().flush();
-            }
-
-            // The log file takes every line, with or without a UI.
-            if let Some(log_file) = &log_file_stdout {
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                let clean = strip_ansi_escapes(&line);
-                let log_line = format!("[{timestamp}] [{stdout_name}] {clean}\n");
-                let mut file = log_file.lock().await;
-                let _ = file.write_all(log_line.as_bytes());
-                let _ = file.flush();
-            }
-        }
-    });
-
-    let stderr_name = name_str;
-    let stderr_reader = BufReader::new(stderr);
-    let app_state_stderr = app_state;
-
-    let stderr_handle = tokio::spawn(async move {
-        let mut lines = stderr_reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let line = line.trim_end().to_string();
-
-            // Skip empty lines to avoid clutter
-            if line.is_empty() {
-                continue;
-            }
-
-            if let Some(state) = &app_state_stderr {
-                state.add_log(stderr_name.clone(), line.clone(), true).await;
-            } else {
-                // Re-enable VTP before printing — Ctrl+C on Windows can
-                // corrupt the console mode between lines of output.
-                crate::platform::ensure_console_mode();
-
-                // Stderr: red-tinted separator so these lines are
-                // distinguishable from stdout at a glance without shouting.
-                print_prefixed_wrapped(
-                    &stderr_name,
-                    max_name_len,
-                    process_color,
-                    Color::DarkRed,
-                    &line,
-                );
+                // The separator takes the process colour on stdout, so each
+                // stream reads as one column, and red on stderr. Wraps at
+                // terminal width with continuation rows under the content.
+                let separator_color = if is_error {
+                    Color::DarkRed
+                } else {
+                    process_color
+                };
+                print_prefixed_wrapped(&name, max_name_len, process_color, separator_color, &line);
 
                 // Force immediate output to terminal
                 let _ = std::io::stdout().flush();
@@ -259,15 +234,17 @@ pub fn spawn_output_handlers(
             if let Some(log_file) = &log_file {
                 let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
                 let clean = strip_ansi_escapes(&line);
-                let log_line = format!("[{timestamp}] [STDERR] [{stderr_name}] {clean}\n");
+                let marker = if is_error { "[STDERR] " } else { "" };
+                let log_line = format!(
+                    "[{timestamp}] {marker}[{name}] {clean}
+"
+                );
                 let mut file = log_file.lock().await;
                 let _ = file.write_all(log_line.as_bytes());
                 let _ = file.flush();
             }
         }
-    });
-
-    (stdout_handle, stderr_handle)
+    })
 }
 
 /// Format a system message with "gaffa" prefix in magenta.
