@@ -21,8 +21,8 @@ use ratatui::{
 };
 use tokio::sync::{Mutex, mpsc};
 
-use crate::process_manager::{LifecycleOptions, ProcessManager};
-use crate::types::{ProcessError, ProcessStatus};
+use crate::process_manager::{LifecycleOptions, ProcessManager, restart_label, runtime_label};
+use crate::types::ProcessError;
 
 const MAX_LOG_LINES: usize = 1000;
 const MAX_COMMAND_HISTORY: usize = 100;
@@ -298,67 +298,12 @@ pub async fn run_terminal_ui(
             let mut status_lines = vec![];
 
             for (name, info) in runtime.processes.iter() {
-                // Calculate total runtime including current session if running
-                let total_runtime = if info.status == ProcessStatus::Running {
-                    if let Some(start_time) = info.last_restart {
-                        info.cumulative_runtime + start_time.elapsed()
-                    } else {
-                        info.cumulative_runtime
-                    }
-                } else {
-                    info.cumulative_runtime
-                };
-
-                let runtime_str = if total_runtime.as_secs() == 0 {
-                    "N/A".to_string()
-                } else {
-                    let secs = total_runtime.as_secs();
-                    let total_formatted = if secs >= 3600 {
-                        format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
-                    } else if secs >= 60 {
-                        format!("{}m{}s", secs / 60, secs % 60)
-                    } else {
-                        format!("{secs}s")
-                    };
-
-                    // Show current session time, with total in brackets if different
-                    if info.status == ProcessStatus::Running {
-                        if let Some(start_time) = info.last_restart {
-                            let session_secs = start_time.elapsed().as_secs();
-                            let session_formatted = if session_secs >= 3600 {
-                                format!("{}h{}m", session_secs / 3600, (session_secs % 3600) / 60)
-                            } else if session_secs >= 60 {
-                                format!("{}m{}s", session_secs / 60, session_secs % 60)
-                            } else {
-                                format!("{session_secs}s")
-                            };
-                            // Show total in brackets if different from session
-                            if session_secs != secs && info.cumulative_runtime.as_secs() > 0 {
-                                format!("{session_formatted} ({total_formatted})")
-                            } else {
-                                session_formatted
-                            }
-                        } else {
-                            total_formatted
-                        }
-                    } else {
-                        // For stopped processes, just show total
-                        total_formatted
-                    }
-                };
-
-                let restart_str = match info.restart_count {
-                    0 => String::new(),
-                    1 => "1 restart".to_string(),
-                    n => format!("{n} restarts"),
-                };
-
                 status_lines.push(format!(
                     "{:>12} | {:>12} | {:>22} | {:>12}",
                     name,
                     format!("{:?}", info.status),
-                    restart_str,
-                    runtime_str
+                    restart_label(info.restart_count),
+                    runtime_label(info)
                 ));
             }
 

@@ -744,67 +744,12 @@ impl ProcessManager {
             println!("{:-<60}", "");
 
             for (name, info) in runtime.processes.iter() {
-                // Calculate total runtime including current session if running
-                let total_runtime = if info.status == ProcessStatus::Running {
-                    if let Some(start_time) = info.last_restart {
-                        info.cumulative_runtime + start_time.elapsed()
-                    } else {
-                        info.cumulative_runtime
-                    }
-                } else {
-                    info.cumulative_runtime
-                };
-
-                let runtime_str = if total_runtime.as_secs() == 0 {
-                    "N/A".to_string()
-                } else {
-                    let secs = total_runtime.as_secs();
-                    let total_formatted = if secs >= 3600 {
-                        format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
-                    } else if secs >= 60 {
-                        format!("{}m{}s", secs / 60, secs % 60)
-                    } else {
-                        format!("{secs}s")
-                    };
-
-                    // Show current session time, with total in brackets if different
-                    if info.status == ProcessStatus::Running {
-                        if let Some(start_time) = info.last_restart {
-                            let session_secs = start_time.elapsed().as_secs();
-                            let session_formatted = if session_secs >= 3600 {
-                                format!("{}h{}m", session_secs / 3600, (session_secs % 3600) / 60)
-                            } else if session_secs >= 60 {
-                                format!("{}m{}s", session_secs / 60, session_secs % 60)
-                            } else {
-                                format!("{session_secs}s")
-                            };
-                            // Show total in brackets if different from session
-                            if session_secs != secs && info.cumulative_runtime.as_secs() > 0 {
-                                format!("{session_formatted} ({total_formatted})")
-                            } else {
-                                session_formatted
-                            }
-                        } else {
-                            total_formatted
-                        }
-                    } else {
-                        // For stopped processes, just show total
-                        total_formatted
-                    }
-                };
-
-                let restart_str = match info.restart_count {
-                    0 => String::new(),
-                    1 => "1 restart".to_string(),
-                    n => format!("{n} restarts"),
-                };
-
                 println!(
                     "{:>12} | {:>12} | {:>22} | {:>12}",
                     name.cyan(),
                     info.status,
-                    restart_str,
-                    runtime_str
+                    restart_label(info.restart_count),
+                    runtime_label(info)
                 );
             }
             println!("{:-<60}\n", "");
@@ -1185,6 +1130,49 @@ async fn announce_natural_exit(
     }
 }
 
+/// How long a process ran: the current session, with the total beside it once
+/// earlier sessions add to it, or the total alone when it is not running.
+pub(crate) fn runtime_label(info: &ProcessInfo) -> String {
+    fn compact(secs: u64) -> String {
+        if secs >= 3600 {
+            format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
+        } else if secs >= 60 {
+            format!("{}m{}s", secs / 60, secs % 60)
+        } else {
+            format!("{secs}s")
+        }
+    }
+
+    let session = match info.status {
+        ProcessStatus::Running => info.last_restart.map(|start| start.elapsed()),
+        _ => None,
+    };
+    let total = info.cumulative_runtime + session.unwrap_or_default();
+    if total.as_secs() == 0 {
+        return "N/A".to_string();
+    }
+    match session {
+        Some(session) if info.cumulative_runtime.as_secs() > 0 => {
+            format!(
+                "{} ({})",
+                compact(session.as_secs()),
+                compact(total.as_secs())
+            )
+        }
+        Some(session) => compact(session.as_secs()),
+        None => compact(total.as_secs()),
+    }
+}
+
+/// "1 restart", "3 restarts", or nothing before the first.
+pub(crate) fn restart_label(count: u32) -> String {
+    match count {
+        0 => String::new(),
+        1 => "1 restart".to_string(),
+        n => format!("{n} restarts"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1332,6 +1320,36 @@ mod tests {
 
         let result = manager.handle_command("unknown command").await;
         assert!(result.is_err());
+    }
+
+    fn process_info(status: ProcessStatus, session: Option<u64>, cumulative: u64) -> ProcessInfo {
+        ProcessInfo {
+            command: String::new(),
+            status,
+            restart_count: 0,
+            last_restart: session.map(|secs| Instant::now() - Duration::from_secs(secs)),
+            stopped_at: None,
+            cumulative_runtime: Duration::from_secs(cumulative),
+            exit_code: None,
+        }
+    }
+
+    #[test]
+    fn test_runtime_label_shows_the_session_and_the_total_beside_it() {
+        let label =
+            |status, session, cumulative| runtime_label(&process_info(status, session, cumulative));
+
+        assert_eq!(label(ProcessStatus::Stopped, None, 0), "N/A");
+        assert_eq!(label(ProcessStatus::Stopped, None, 3_725), "1h2m");
+        assert_eq!(label(ProcessStatus::Running, Some(90), 0), "1m30s");
+        assert_eq!(label(ProcessStatus::Running, Some(5), 60), "5s (1m5s)");
+    }
+
+    #[test]
+    fn test_restart_label_counts_in_words() {
+        assert_eq!(restart_label(0), "");
+        assert_eq!(restart_label(1), "1 restart");
+        assert_eq!(restart_label(3), "3 restarts");
     }
 
     #[tokio::test]
