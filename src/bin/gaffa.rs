@@ -1,4 +1,7 @@
 use clap::{Arg, Command};
+use gaffa::constants::{
+    EXIT_CODE_CTRL_C_WINDOWS, EXIT_CODE_FORCED_TERMINATION, EXIT_CODE_KEYBOARD_INTERRUPT,
+};
 use gaffa::output;
 use gaffa::{LifecycleOptions, ProcessError, ProcessManager, Result};
 use std::collections::HashMap;
@@ -86,32 +89,6 @@ fn reset_terminal_simple() {
     // Flush output
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
-}
-
-fn show_help() {
-    println!("gaffa run [OPTIONS] [PROCESS_NAMES]...");
-    println!();
-    println!("Run processes from a Procfile");
-    println!();
-    println!("Options:");
-    println!("  -i, --interactive         Run in interactive mode with Terminal UI");
-    println!("  -p, --procfile <FILE>     Path to Procfile (default: ./Procfile)");
-    println!("  -l, --log-file <FILE>     Log output to file");
-    println!("      --env <KEY=VALUE>     Set environment variable (can be used multiple times)");
-    println!("      --env-file <FILE>     Read environment variables from file");
-    println!("      --shutdown-timeout <SECONDS>");
-    println!("                            Grace period before force-kill (default: 10)");
-    println!("      --shell <PROGRAM>     Shell used to run commands (default: pwsh or cmd on");
-    println!("                            Windows, sh on Unix; env override: GAFFA_SHELL)");
-    println!();
-    println!("Arguments:");
-    println!("  [PROCESS_NAMES]...       Specific processes to run (runs all if omitted)");
-    println!();
-    println!("Examples:");
-    println!("  gaffa run                    # Run all processes");
-    println!("  gaffa run web worker         # Run only web and worker processes");
-    println!("  gaffa run -i                 # Run in interactive mode");
-    println!("  gaffa run --env PORT=8000    # Set environment variable");
 }
 
 /// Rotate a log file path for a new session: `path/to/gaffa.log` becomes
@@ -204,7 +181,7 @@ fn print_startup_banner(
             );
         }
         println!("{}", output::format_gaffa_message("Ctrl+C to stop", 5));
-        announce_log_rotation(log_path_requested, log_path_rotated);
+        announce_log_rotation(log_path_rotated);
         return;
     }
 
@@ -227,27 +204,18 @@ fn print_startup_banner(
     println!("  {}", bot.bright_black());
     println!();
 
-    announce_log_rotation(log_path_requested, log_path_rotated);
+    announce_log_rotation(log_path_rotated);
 }
 
-/// Print a one-line `gaffa │ rotated <requested> → <rotated>` notice when
-/// the actual on-disk file differs from the path the user passed with
-/// `--log-file`. Keeps the banner header clean while making the rotation
-/// observable — grep-friendly and copy-safe.
-fn announce_log_rotation(requested: Option<&str>, rotated: Option<&std::path::Path>) {
-    let (Some(req), Some(rot)) = (requested, rotated) else {
+/// Print a one-line `gaffa │ log rotated → <file>` notice naming the file this
+/// session logs into — the banner shows the path passed with `--log-file`.
+fn announce_log_rotation(rotated: Option<&std::path::Path>) {
+    let Some(rot) = rotated else {
         return;
     };
-    let rot_str = rot.display().to_string();
-    // Compare by filename when the rotated path just adds parent dirs; a
-    // true "same path" means rotation was a no-op and there is nothing
-    // to announce.
-    if rot_str == req {
-        return;
-    }
     println!(
         "{}",
-        output::format_gaffa_message(&format!("log rotated → {rot_str}"), 5)
+        output::format_gaffa_message(&format!("log rotated → {}", rot.display()), 5)
     );
 }
 
@@ -257,8 +225,7 @@ async fn run_non_interactive(
     procfile_path: &str,
     log_path_requested: Option<&str>,
     log_path_rotated: Option<&std::path::Path>,
-) -> Result<bool> {
-    // Returns true if interrupted
+) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::signal;
 
@@ -280,12 +247,8 @@ async fn run_non_interactive(
 
     // Spawn signal handler
     tokio::spawn({
-        let manager = Arc::clone(&manager);
         let interrupted = Arc::clone(&interrupted);
         async move {
-            // Re-fetch max_name_len inside the spawned task
-            let _max_name_len = manager.get_max_name_length().await;
-
             #[cfg(unix)]
             {
                 let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
@@ -368,18 +331,18 @@ async fn run_non_interactive(
     // Reset again before summary in case process output corrupted state
     reset_terminal_simple();
 
-    show_termination_summary(&manager, was_interrupted).await;
+    show_termination_summary(&manager).await;
 
     if was_interrupted {
         tokio::time::sleep(Duration::from_millis(100)).await;
         std::process::exit(130);
     }
 
-    Ok(interrupted.load(Ordering::SeqCst))
+    Ok(())
 }
 
-/// Show termination summary and exit.
-async fn show_termination_summary(manager: &ProcessManager, _was_interrupted: bool) {
+/// Print the table of every process with its final status and runtime.
+async fn show_termination_summary(manager: &ProcessManager) {
     use gaffa::paint::Paint;
 
     let snapshot = manager.process_snapshot().await;
@@ -427,9 +390,13 @@ async fn show_termination_summary(manager: &ProcessManager, _was_interrupted: bo
             let status_str = match (&info.status, info.exit_code) {
                 (gaffa::ProcessStatus::Running, _) => "running".to_string(),
                 (gaffa::ProcessStatus::Stopped, Some(0)) => "exit 0".to_string(),
-                (gaffa::ProcessStatus::Stopped, Some(-1)) => "terminated".to_string(),
-                (gaffa::ProcessStatus::Stopped, Some(512)) => "interrupted".to_string(),
-                (gaffa::ProcessStatus::Stopped, Some(-1073741510)) => "interrupted".to_string(),
+                (gaffa::ProcessStatus::Stopped, Some(EXIT_CODE_FORCED_TERMINATION)) => {
+                    "terminated".to_string()
+                }
+                (
+                    gaffa::ProcessStatus::Stopped,
+                    Some(EXIT_CODE_KEYBOARD_INTERRUPT | EXIT_CODE_CTRL_C_WINDOWS),
+                ) => "interrupted".to_string(),
                 (gaffa::ProcessStatus::Stopped, Some(code)) => format!("exit {code}"),
                 (gaffa::ProcessStatus::Stopped, None) => "stopped".to_string(),
                 _ => "unknown".to_string(),
@@ -713,7 +680,7 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
                 );
 
                 // Show termination summary
-                show_termination_summary(&manager, false).await;
+                show_termination_summary(&manager).await;
             }
             Err(e) => {
                 reset_terminal();
@@ -730,7 +697,7 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
         )
         .await
         {
-            Ok(_) => {
+            Ok(()) => {
                 reset_terminal_simple();
             }
             Err(e) => {
@@ -756,6 +723,7 @@ async fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .about("Cross-platform process manager for Procfile-based applications")
         .arg_required_else_help(true)
+        .subcommand_required(true)
         .subcommand(
             Command::new("reset-terminal")
                 .about("Reset terminal to normal state (use if terminal is messed up)"),
@@ -838,6 +806,6 @@ async fn main() {
             // Exit cleanly after successful run
             std::process::exit(0);
         }
-        _ => show_help(),
+        _ => unreachable!("clap requires a subcommand"),
     }
 }
