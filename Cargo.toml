@@ -34,15 +34,17 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["consoleapi", "processenv", "winbase", "wincon", "handleapi", "jobapi2", "winnt", "processthreadsapi"] }
 
-# The changelog documentation/CHANGES.md, written by the version workflow.
+# The changelog documentation/CHANGES.md, written by the version workflow; a
+# release is dated in the zone the workflow declares in RELEASE_TIMEZONE.
 [package.metadata.git-cliff.changelog]
 body = """
 ---
+{% set zone = get_env(name="RELEASE_TIMEZONE", default="UTC") %}\
 {% if version %}\
     {% if previous.version %}\
-        ## [{{ version | trim_start_matches(pat="v") }}](https://github.com/oryon-dominik/interstellar-gaffa/compare/{{ previous.version }}..{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+        ## [{{ version | trim_start_matches(pat="v") }}](https://github.com/oryon-dominik/interstellar-gaffa/compare/{{ previous.version }}..{{ version }}) - {{ timestamp | date(format="%Y-%m-%d", timezone=zone) }}
     {% else %}\
-        ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+        ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d", timezone=zone) }}
     {% endif %}\
 {% else %}\
     ## [unreleased]

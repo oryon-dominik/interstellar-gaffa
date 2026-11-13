@@ -26,6 +26,11 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
+    env:
+      # The runner sits outside the fleet, so it declares its zone. The month
+      # in the number and the date in the changelog are read in it: UTC would
+      # date the first hours of a day to the one before.
+      RELEASE_TIMEZONE: Europe/Berlin
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,9 +39,7 @@ jobs:
       - name: Mint the version — the running month plus the releases it already carries
         id: version
         run: |
-          # The month is read in Europe/Berlin: UTC would date the first hours
-          # of a month to the one before.
-          month=$(TZ=Europe/Berlin date +%Y.%-m)
+          month=$(TZ="$RELEASE_TIMEZONE" date +%Y.%-m)
           serial=$(git tag --list "$month.*" | wc --lines)
           version="$month.$serial"
           echo "version=$version" >>"$GITHUB_OUTPUT"
