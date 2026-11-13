@@ -17,10 +17,6 @@ categories = [
 name = "gaffa"
 path = "src/bin/gaffa.rs"
 
-[[test]]
-name = "non_interactive_interrupt_test"
-path = "tests/non_interactive_interrupt_test.rs"
-
 [dependencies]
 tokio = { version = "1.47.0", features = ["full"] }
 regex = "1"
@@ -38,15 +34,6 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["consoleapi", "processenv", "winbase", "wincon", "handleapi", "jobapi2", "winnt", "processthreadsapi"] }
-
-[dev-dependencies]
-uuid = { version = "1", features = ["v4"] }
-
-[package.metadata.docs.rs]
-all-features = true
-
-[badges]
-github-actions = { repository = "oryon-dominik/interstellar-gaffa", branch = "trunk" }
 
 # The changelog documentation/CHANGES.md, written by the version workflow.
 [package.metadata.git-cliff.changelog]
