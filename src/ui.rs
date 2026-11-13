@@ -20,6 +20,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 use tokio::sync::{Mutex, mpsc};
+use unicode_width::UnicodeWidthStr;
 
 use crate::process_manager::{LifecycleOptions, ProcessManager, restart_label, runtime_label};
 use crate::types::ProcessError;
@@ -228,9 +229,9 @@ impl UIState {
         self.cursor_position = self.input.len();
     }
 
-    /// The screen column of the cursor inside the input box.
+    /// The screen column of the cursor inside the input box; CJK and emoji take two.
     fn cursor_column(&self) -> usize {
-        self.input[..self.cursor_position].chars().count()
+        self.input[..self.cursor_position].width()
     }
 
     /// Recall the previous command; true when the input changed.
@@ -1205,6 +1206,14 @@ mod tests {
     fn test_cursor_column_counts_characters_not_bytes() {
         let mut ui_state = typed("äöü€");
         assert_eq!(ui_state.cursor_column(), 4);
+        ui_state.move_left();
+        assert_eq!(ui_state.cursor_column(), 3);
+    }
+
+    #[test]
+    fn test_cursor_column_counts_wide_characters_as_two_columns() {
+        let mut ui_state = typed("a中🚀");
+        assert_eq!(ui_state.cursor_column(), 5);
         ui_state.move_left();
         assert_eq!(ui_state.cursor_column(), 3);
     }
