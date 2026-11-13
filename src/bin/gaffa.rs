@@ -543,7 +543,7 @@ fn ensure_log_parent_dir(path: &str) -> Result<()> {
     let yes = matches!(answer.trim(), "y" | "Y" | "yes" | "YES");
 
     if !yes {
-        return Err(ProcessError::ProcfileRead {
+        return Err(ProcessError::LogFileOpen {
             path: path.to_string(),
             source: std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -552,7 +552,7 @@ fn ensure_log_parent_dir(path: &str) -> Result<()> {
         });
     }
 
-    std::fs::create_dir_all(parent).map_err(|e| ProcessError::ProcfileRead {
+    std::fs::create_dir_all(parent).map_err(|e| ProcessError::LogFileOpen {
         path: path.to_string(),
         source: e,
     })?;
@@ -589,20 +589,8 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
             if let Some((key, value)) = env_arg.split_once('=') {
                 env_vars.insert(key.to_string(), value.to_string());
             } else {
-                // We don't have max_name_len yet, so use default formatting
-                eprintln!(
-                    "{}",
-                    output::format_error_message(
-                        &format!("Invalid environment variable format: {}", env_arg),
-                        0,
-                    )
-                );
-                eprintln!(
-                    "{}",
-                    output::format_error_message("Expected format: KEY=VALUE", 0)
-                );
-                return Err(ProcessError::InvalidFormat {
-                    line: env_arg.clone(),
+                return Err(ProcessError::InvalidEnv {
+                    arg: env_arg.clone(),
                 });
             }
         }
@@ -641,7 +629,7 @@ async fn handle_run_command(run_matches: &clap::ArgMatches) -> Result<()> {
             .create(true)
             .append(true)
             .open(&rotated)
-            .map_err(|e| ProcessError::ProcfileRead {
+            .map_err(|e| ProcessError::LogFileOpen {
                 path: rotated.display().to_string(),
                 source: e,
             })?;

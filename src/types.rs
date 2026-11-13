@@ -5,6 +5,7 @@ use crate::paint::Paint;
 pub type Result<T> = std::result::Result<T, ProcessError>;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ProcessError {
     #[error("Failed to read Procfile '{path}': {source}")]
     ProcfileRead {
@@ -14,6 +15,21 @@ pub enum ProcessError {
 
     #[error("Invalid Procfile line format: '{line}'")]
     InvalidFormat { line: String },
+
+    #[error("Failed to read env file '{path}': {source}")]
+    EnvFileRead {
+        path: String,
+        source: std::io::Error,
+    },
+
+    #[error("Invalid environment variable '{arg}': expected KEY=VALUE")]
+    InvalidEnv { arg: String },
+
+    #[error("Failed to open log file '{path}': {source}")]
+    LogFileOpen {
+        path: String,
+        source: std::io::Error,
+    },
 
     #[error("No valid processes found in Procfile")]
     NoProcesses,

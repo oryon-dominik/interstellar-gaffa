@@ -94,7 +94,7 @@ pub async fn parse_env_file(path: &str, env_vars: &mut HashMap<String, String>) 
     let contents =
         tokio::fs::read_to_string(path)
             .await
-            .map_err(|e| ProcessError::ProcfileRead {
+            .map_err(|e| ProcessError::EnvFileRead {
                 path: path.to_string(),
                 source: e,
             })?;

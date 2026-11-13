@@ -48,6 +48,46 @@ fn test_gaffa_run_nonexistent_procfile() {
     assert!(stderr.contains("Failed to read Procfile"));
 }
 
+/// Run `gaffa run` on a valid Procfile with extra arguments and return its stderr.
+fn run_failing(extra: &[&str]) -> String {
+    let output = Command::new("cargo")
+        .args(["run", "--", "run", "-p", "tests/fixtures/simple.procfile"])
+        .args(extra)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn test_a_missing_env_file_is_named_as_an_env_file() {
+    let stderr = run_failing(&["--env-file", "nonexistent.env"]);
+
+    assert!(stderr.contains("Failed to read env file 'nonexistent.env'"));
+    assert!(!stderr.contains("Procfile"));
+}
+
+#[test]
+fn test_an_env_without_a_value_is_named_as_an_environment_variable() {
+    let stderr = run_failing(&["--env", "FOO"]);
+
+    assert!(stderr.contains("Invalid environment variable 'FOO'"));
+    assert!(!stderr.contains("Procfile"));
+}
+
+#[test]
+fn test_a_declined_log_directory_is_named_as_a_log_file() {
+    let log_file = scratch("declined_log_directory").join("gaffa.log");
+    let _ = std::fs::remove_dir_all(log_file.parent().unwrap());
+
+    // stdin is closed, so the create-the-directory prompt reads no "y".
+    let stderr = run_failing(&["--log-file", log_file.to_str().unwrap()]);
+
+    assert!(stderr.contains("Failed to open log file"));
+    assert!(!stderr.contains("Procfile"));
+}
+
 #[test]
 fn test_gaffa_log_file() {
     // Create a simple test Procfile
