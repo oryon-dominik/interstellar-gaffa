@@ -27,8 +27,8 @@ use crate::types::{ProcessError, ProcessStatus};
 const MAX_LOG_LINES: usize = 1000;
 const MAX_COMMAND_HISTORY: usize = 100;
 
-// Color palette for different processes (magenta excluded - reserved for gaffa)
-// Must match the colors in main.rs for consistency
+// Fallback palette for processes without a manager colour, in ratatui's names
+// (magenta excluded - reserved for gaffa).
 const PROCESS_COLORS: [Color; 7] = [
     Color::Cyan,
     Color::Yellow,
@@ -193,7 +193,6 @@ pub async fn run_terminal_ui(
         *stx = Some(status_tx.clone());
     }
 
-    // Auto-update status every 2 seconds
     let manager_for_status = Arc::clone(&manager);
     let status_tx_clone = status_tx.clone();
     let status_handle = tokio::spawn(async move {
@@ -309,7 +308,7 @@ pub async fn run_terminal_ui(
                 let _ = file.flush();
             }
 
-            // Push directly into shared state (eliminates clone_from overhead)
+            // Push into the shared state the UI loop reads
             let mut state_logs = state_for_logs.logs.lock().await;
             state_logs.push_back(entry);
             if state_logs.len() > MAX_LOG_LINES {
@@ -437,7 +436,7 @@ pub async fn run_terminal_ui(
     });
 
     // Wait for either UI or command handler to finish
-    let _result = tokio::select! {
+    let _ = tokio::select! {
         ui_res = ui_result => ui_res,
         _ = command_handle => Ok(Ok(())),
         _ = tokio::signal::ctrl_c() => {
@@ -450,9 +449,6 @@ pub async fn run_terminal_ui(
     status_handle.abort();
     log_handle.abort();
 
-    // Store any final state we need before cleanup
-    let _should_show_summary = true; // We always want to show summary after interactive mode
-
     // Cleanup terminal immediately
     cleanup_terminal();
 
@@ -464,12 +460,10 @@ pub async fn run_terminal_ui(
     // Add a delay to ensure terminal state is fully restored
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Return with a flag indicating summary should be shown
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
-// Terminal cleanup function that MUST be called
+/// Restore the terminal: cursor, raw mode, alternate screen, mouse, colours.
 fn cleanup_terminal() {
     use std::io::{Write, stderr, stdout};
 

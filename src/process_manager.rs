@@ -21,11 +21,8 @@ use crate::types::*;
 use crate::ui::AppState;
 use crate::ui_wrapper::run_interactive_ui;
 
-/// Options for process lifecycle operations.
-///
-/// Replaces the previous pattern of duplicated `_with_state` / `_internal`
-/// methods by bundling the two orthogonal knobs (UI state and logging) into
-/// a single value object.
+/// Options for process lifecycle operations: the UI to report to, and
+/// whether to announce each step.
 pub struct LifecycleOptions {
     pub app_state: Option<Arc<AppState>>,
     pub log_messages: bool,
@@ -1081,8 +1078,8 @@ impl Default for ProcessManager {
 
 /// Own a child process: react to its exit and execute lifecycle commands.
 ///
-/// Replaces the previous polling monitor — `child.wait()` resolves the moment
-/// the process exits, with no lock contention on the shared runtime state.
+/// `child.wait()` resolves the moment the process exits, with no lock
+/// contention on the shared runtime state.
 /// State updates happen *before* command replies are sent, so callers observe
 /// consistent state as soon as their reply arrives.
 async fn run_process_actor(
