@@ -1,25 +1,12 @@
 //! Stability & memory safety tests for gaffa's process management.
 //!
-//! These tests document known issues and verify correct behavior around:
+//! These tests verify behavior around:
 //! - Handle cleanup on natural process exit
-//! - Log buffer caps and memory growth
 //! - Handle accumulation across restart cycles
 //! - Graceful shutdown for all exit paths
 //! - Channel backpressure with fast producers
 //! - Channel replacement and lost logs
-//!
-//! ## Known Bugs Documented
-//!
-//! - **HANDLE_LEAK**: monitor_handles and output_handles are not cleaned up
-//!   when a process exits naturally. Only stop_process_internal removes them.
-//! - **LOG_CLONE**: Every new log entry triggers clone_from of the entire
-//!   VecDeque in the log_handle task (ui.rs:312).
-//! - **LOST_LOGS**: Logs sent before run_terminal_ui() replaces the channel
-//!   sender are silently lost because AppState::new() drops the receiver.
-//! - **RESTART_STUBBORN**: restart_process fails with ProcessAlreadyRunning
-//!   for stubborn processes because stop returns Ok but child stays in map.
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -198,81 +185,6 @@ async fn test_natural_exit_handle_cleanup() {
     );
 
     cleanup_procfile(&path);
-}
-
-// ===========================================================================
-// 2. Log buffer caps and duplication
-// ===========================================================================
-
-#[tokio::test]
-async fn test_log_buffer_cap_1000_in_log_handler() {
-    // Simulates the log handler's behavior: VecDeque capped at 1000 entries
-    const MAX_LOG_LINES: usize = 1000;
-    let mut logs: VecDeque<LogEntry> = VecDeque::new();
-
-    for i in 0..2000 {
-        logs.push_back(LogEntry {
-            timestamp: Instant::now(),
-            process: "test".to_string(),
-            content: format!("line {i}"),
-            is_error: false,
-        });
-        if logs.len() > MAX_LOG_LINES {
-            logs.pop_front();
-        }
-    }
-
-    assert_eq!(logs.len(), MAX_LOG_LINES);
-    assert_eq!(logs.front().unwrap().content, "line 1000");
-    assert_eq!(logs.back().unwrap().content, "line 1999");
-}
-
-#[tokio::test]
-async fn test_log_buffer_cap_10000_in_ui_state() {
-    // Simulates the UIState's behavior: VecDeque capped at 10,000 entries
-    const MAX_LOGS: usize = 10_000;
-    let mut logs: VecDeque<LogEntry> = VecDeque::new();
-
-    for i in 0..15_000 {
-        logs.push_back(LogEntry {
-            timestamp: Instant::now(),
-            process: "test".to_string(),
-            content: format!("line {i}"),
-            is_error: false,
-        });
-        while logs.len() > MAX_LOGS {
-            logs.pop_front();
-        }
-    }
-
-    assert_eq!(logs.len(), MAX_LOGS);
-    assert_eq!(logs.front().unwrap().content, "line 5000");
-    assert_eq!(logs.back().unwrap().content, "line 14999");
-}
-
-#[tokio::test]
-async fn test_log_triple_duplication_clone_overhead() {
-    // DOCUMENTS KNOWN ISSUE [LOG_CLONE]: log_handle clones the entire VecDeque
-    // into AppState.logs on every single log entry via state_logs.clone_from(&logs).
-    //
-    // This test measures the allocation pattern to document the overhead.
-    let state = Arc::new(AppState::new());
-
-    let start = Instant::now();
-    for i in 0..500 {
-        state
-            .add_log("test".to_string(), format!("log entry {i}"), false)
-            .await;
-    }
-    let duration = start.elapsed();
-
-    // The send via channel is cheap. The expensive clone_from happens
-    // in the log_handle task (not here), but we document the architecture.
-    assert!(
-        duration < Duration::from_secs(1),
-        "adding 500 logs via channel should be fast, took {:?}",
-        duration
-    );
 }
 
 // ===========================================================================
@@ -959,16 +871,8 @@ async fn test_procfile_with_duplicate_names() {
     let mut names = manager.process_names().await;
     names.sort();
 
-    // Duplicate names should be suffixed with .2, .3, etc.
-    assert!(
-        names.iter().any(|n| n == "web"),
-        "should have 'web' process"
-    );
-    assert!(
-        names.len() >= 2,
-        "duplicate names should create multiple entries, got: {:?}",
-        names
-    );
+    // Duplicate names are suffixed with .2, .3, etc.
+    assert_eq!(names, ["web", "web.2", "web.3"]);
 
     cleanup_procfile(&path);
 }

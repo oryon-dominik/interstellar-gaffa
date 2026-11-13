@@ -1236,28 +1236,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_procfile_duplicate_names() {
-        let manager = ProcessManager::new();
-        let procfile_content = "web: echo hello\nweb: echo world\nweb: echo test";
-        let procfile_path = create_test_procfile(procfile_content);
-
-        let result = manager.load_procfile(&procfile_path).await;
-        assert!(result.is_ok());
-
-        let mut process_names = manager.process_names().await;
-        process_names.sort();
-
-        // Debug: print what we actually got
-        eprintln!("Process names: {process_names:?}");
-
-        // Since HashMap doesn't preserve order and we're using insert which overwrites,
-        // we might not get all three. Let's verify we get at least one "web" entry
-        assert!(process_names.iter().any(|n| n.starts_with("web")));
-
-        cleanup_test_procfile(&procfile_path);
-    }
-
-    #[tokio::test]
     async fn test_load_procfile_invalid_format() {
         let manager = ProcessManager::new();
         let procfile_content = "invalid line without colon";
