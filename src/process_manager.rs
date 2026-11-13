@@ -644,14 +644,12 @@ impl ProcessManager {
             config.shutdown_timeout
         };
 
-        // Log that we're starting shutdown
+        // Quit, "stop all", a signal and a broken-off UI all end up here.
+        let announcement = "Stopping all processes gracefully...";
         if let Some(state) = &opts.app_state {
-            state
-                .add_system_log("Interrupt received, stopping processes gracefully...".to_string())
-                .await;
+            state.add_system_log(announcement.to_string()).await;
         } else {
-            self.print_system_message("Interrupt received, stopping processes gracefully...")
-                .await;
+            self.print_system_message(announcement).await;
         }
 
         // Stop all processes in parallel with individual timeouts
@@ -1298,6 +1296,32 @@ mod tests {
         }
         assert!(result.is_ok());
 
+        cleanup_test_procfile(&procfile_path);
+    }
+
+    #[tokio::test]
+    async fn test_stopping_everything_announces_it_without_claiming_an_interrupt() {
+        let manager = ProcessManager::new();
+        let procfile_content = if cfg!(windows) {
+            "test: cmd /c \"ping -n 6 127.0.0.1 >nul\""
+        } else {
+            "test: sleep 5"
+        };
+        let procfile_path = create_test_procfile(procfile_content);
+        manager.load_procfile(&procfile_path).await.unwrap();
+        manager.start_process("test").await.unwrap();
+        let state = Arc::new(AppState::new());
+
+        manager
+            .handle_command_with_opts("stop all", &LifecycleOptions::with_ui(Arc::clone(&state)))
+            .await
+            .unwrap();
+
+        let logs = state.logs.lock().await;
+        assert_eq!(
+            logs.front().map(|entry| entry.content.as_str()),
+            Some("Stopping all processes gracefully...")
+        );
         cleanup_test_procfile(&procfile_path);
     }
 
