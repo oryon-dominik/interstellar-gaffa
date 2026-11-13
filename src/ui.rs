@@ -414,7 +414,7 @@ pub async fn run_terminal_ui(
     // Spawn the UI in a separate task that can block
     let logs_clone = Arc::clone(&state.logs);
     let manager_for_ui = Arc::clone(&manager);
-    let ui_result = tokio::task::spawn_blocking(move || {
+    let ui_handle = tokio::task::spawn_blocking(move || {
         run_ui_loop(ui_tx, logs_clone, status_rx, shutdown_rx, manager_for_ui)
     });
 
@@ -529,13 +529,13 @@ pub async fn run_terminal_ui(
         }
     });
 
-    // Wait for either UI or command handler to finish
-    let _ = tokio::select! {
-        ui_res = ui_result => ui_res,
-        _ = command_handle => Ok(Ok(())),
+    // Wait for either UI or command handler to finish; a UI error is the caller's to report
+    let ui_result = tokio::select! {
+        joined = ui_handle => joined.unwrap_or_else(|e| std::panic::resume_unwind(e.into_panic())),
+        _ = command_handle => Ok(()),
         _ = tokio::signal::ctrl_c() => {
             // Don't call stop_all here - the UI will handle it via UICommand::Quit
-            Ok(Ok(()))
+            Ok(())
         }
     };
 
@@ -554,7 +554,7 @@ pub async fn run_terminal_ui(
     // Add a delay to ensure terminal state is fully restored
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    Ok(())
+    ui_result
 }
 
 /// Restore the terminal: cursor, raw mode, alternate screen, mouse, colours.
