@@ -216,7 +216,6 @@ pub mod unix {
     use std::time::Duration;
 
     pub fn configure_command(cmd: &mut tokio::process::Command) {
-        use std::os::unix::process::CommandExt;
         // Create new process group
         cmd.process_group(0);
     }

@@ -1,5 +1,4 @@
 use std::process::Command;
-use std::time::Duration;
 
 #[cfg(windows)]
 #[test]
@@ -30,7 +29,7 @@ test2: while ($true) { Write-Host 'Process 2'; Start-Sleep -Seconds 1 }
         .expect("Failed to start gaffa");
 
     // Wait a bit for processes to start
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     // NOTE: In a real test environment, you would send Ctrl+C here
     // For manual testing:
