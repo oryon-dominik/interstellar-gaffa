@@ -68,6 +68,7 @@ pub(crate) struct ProcessConfig {
     pub log_file: Option<Arc<Mutex<std::fs::File>>>,
     pub shutdown_timeout: Duration,
     pub shell: Shell,
+    pub procfile_path: String,
 }
 
 /// Commands accepted by a process actor.
@@ -121,6 +122,7 @@ impl ProcessManager {
                 log_file: None,
                 shutdown_timeout: GRACEFUL_SHUTDOWN_TIMEOUT,
                 shell: Shell::platform_default().clone(),
+                procfile_path: String::new(),
             })),
             runtime: Arc::new(Mutex::new(RuntimeState {
                 processes: HashMap::new(),
@@ -171,12 +173,18 @@ impl ProcessManager {
         let mut config = self.config.lock().await;
         config.colors = data.colors;
         config.max_name_length = data.max_name_length;
+        config.procfile_path = procfile_path.to_string();
         drop(config);
 
         let mut runtime = self.runtime.lock().await;
         runtime.processes = data.processes;
 
         Ok(())
+    }
+
+    /// The path of the Procfile the processes were loaded from.
+    pub(crate) async fn procfile_path(&self) -> String {
+        self.config.lock().await.procfile_path.clone()
     }
 
     /// Start a specific process by name.
@@ -1215,6 +1223,17 @@ mod tests {
         assert_eq!(process_names.len(), 2);
         assert!(process_names.contains(&"web".to_string()));
         assert!(process_names.contains(&"worker".to_string()));
+
+        cleanup_test_procfile(&procfile_path);
+    }
+
+    #[tokio::test]
+    async fn test_load_procfile_remembers_its_path() {
+        let manager = ProcessManager::new();
+        let procfile_path = create_test_procfile("web: echo hello");
+
+        manager.load_procfile(&procfile_path).await.unwrap();
+        assert_eq!(manager.procfile_path().await, procfile_path);
 
         cleanup_test_procfile(&procfile_path);
     }
