@@ -104,6 +104,11 @@ test2: echo "Test 2 done"
         "Should show termination summary on normal exit"
     );
 
+    // Without the UI nothing reads `q` — the banner names only what stops gaffa.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Ctrl+C to stop"), "{stdout}");
+    assert!(!stdout.contains("q or Ctrl+C"), "{stdout}");
+
     // Clean up
     std::fs::remove_dir_all(&test_dir).ok();
 }

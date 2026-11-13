@@ -174,7 +174,7 @@ fn print_startup_banner(
     if let Some(p) = log_path_requested {
         rows.push(("logfile", p.to_string()));
     }
-    rows.push(("controls", "q or Ctrl+C to stop".to_string()));
+    rows.push(("controls", "Ctrl+C to stop".to_string()));
 
     let label_w = rows.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
     let value_w = rows
@@ -203,7 +203,7 @@ fn print_startup_banner(
                 output::format_gaffa_message(&format!("logging to {p}"), 5)
             );
         }
-        println!("{}", output::format_gaffa_message("q or Ctrl+C to stop", 5));
+        println!("{}", output::format_gaffa_message("Ctrl+C to stop", 5));
         announce_log_rotation(log_path_requested, log_path_rotated);
         return;
     }
